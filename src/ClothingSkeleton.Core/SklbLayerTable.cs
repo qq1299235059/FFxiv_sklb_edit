@@ -94,10 +94,10 @@ public static class SklbLayerTable
     {
         var table=Decode(container,short.MaxValue);
         var header=container.Header.Span;
-        if(header[table.End..].IndexOfAnyExcept((byte)0)>=0)throw new InvalidDataException("δ֪�ķ������䲻�ܰ�ȫ���š�");
+        if(header[table.End..].IndexOfAnyExcept((byte)0)>=0)throw new InvalidDataException("未知的非零层填充不能安全重排。");
         if(layers.Count>short.MaxValue || layers.Select(l=>l.Id).Distinct().Count()!=layers.Count ||
             layers.Any(l=>l.BoneIndices.Length>short.MaxValue || l.BoneIndices.Distinct().Count()!=l.BoneIndices.Length || l.BoneIndices.Any(i=>i<0 || i>=boneCount)))
-            throw new InvalidDataException("���ź�Ĺ�����������Ч��");
+            throw new InvalidDataException("重排后的骨骼层索引无效。");
         using var stream=new MemoryStream();using var writer=new BinaryWriter(stream);
         writer.Write(Magic);writer.Write(checked((short)layers.Count));
         var cursor=6+2*layers.Count;
@@ -109,7 +109,7 @@ public static class SklbLayerTable
         }
         writer.Flush();
         var offset=Math.Max(container.HavokOffset,(table.Start+(int)stream.Length+15)&~15);
-        if(payload.Length<16 || (long)offset+payload.Length>SklbContainer.MaximumFileSize)throw new InvalidDataException("���ŹǼܴ�С��Ч��");
+        if(payload.Length<16 || (long)offset+payload.Length>SklbContainer.MaximumFileSize)throw new InvalidDataException("重排骨架大小无效。");
         var result=new byte[offset+payload.Length];header[..table.Start].CopyTo(result);
         BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(12),offset);stream.ToArray().CopyTo(result,table.Start);payload.CopyTo(result.AsSpan(offset));
         return result;

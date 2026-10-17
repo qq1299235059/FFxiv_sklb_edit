@@ -35,7 +35,7 @@ manifest = json.loads(returned.with_suffix(".complete.json").read_text(encoding=
 assert manifest["boneCount"] == 14
 assert manifest["gltfSha256"] == hashlib.sha256(returned.read_bytes()).hexdigest()
 assert len(gltf["skins"]) == 1 and len(gltf["skins"][0]["joints"]) == 14
-assert not any("�����Ǽ�" in node.get("name", "") for node in gltf["nodes"])
+assert not any("基础骨架" in node.get("name", "") for node in gltf["nodes"])
 assert len({node["extras"]["cswBoneId"] for node in gltf["nodes"] if "cswBoneId" in node.get("extras", {})}) == 14
 # All exported JSON must omit Blender-only source paths.
 assert "csw_source_file" not in returned.read_text(encoding="utf-8")

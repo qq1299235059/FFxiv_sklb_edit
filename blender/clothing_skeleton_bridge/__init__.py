@@ -3,7 +3,7 @@ bl_info = {
     "author": "ClothingSkeleton contributors",
     "version": (0, 4, 0),
     "blender": (4, 5, 0),
-    "location": "3D View > Sidebar > ��װ�Ǽ�",
+    "location": "3D View > Sidebar > 服装骨架",
     "description": "Import protected FFXIV clothing skeletons and export appended bones",
     "category": "Import-Export",
 }
@@ -26,7 +26,7 @@ def configure_plugin_root(directory):
     global PLUGIN_ROOT
     root = Path(directory).resolve()
     if not (root / "ClothingSkeleton.dll").is_file():
-        raise ValueError("�޷���λ���Ŀ¼�������Ϸ������´���Ŀ")
+        raise ValueError("无法定位插件目录，请从游戏插件重新打开项目")
     PLUGIN_ROOT = root
 
 
@@ -51,7 +51,7 @@ def import_project(filepath):
     created = set(bpy.data.objects) - before
     armatures = [obj for obj in created if obj.type == "ARMATURE"]
     if len(armatures) != 1:
-        raise ValueError("��Ŀ��Ҫ������ֻ����һ����װ�Ǽ�")
+        raise ValueError("项目需要包含且只包含一个服装骨架")
     armature = armatures[0]
     armature["csw_baseline"] = json.dumps(baseline)
     armature["csw_source_file"] = str(filepath)
@@ -60,12 +60,12 @@ def import_project(filepath):
     if descriptor_path.is_file():
         descriptor = json.loads(descriptor_path.read_text(encoding="utf-8-sig"))
         if descriptor.get("available") and descriptor.get("projectId") != baseline["projectId"]:
-            raise ValueError("����ҽ���Ϣ�����ڵ�ǰ��Ŀ�������´�����Ŀ")
+            raise ValueError("人体挂接信息不属于当前项目，请重新创建项目")
         armature["csw_anchor_rig_info"] = json.dumps(descriptor)
     bpy.context.scene["csw_active_project_id"] = baseline["projectId"]
     originals = {bone["name"]: bone for bone in baseline["bones"]}
     if set(originals) != set(armature.data.bones.keys()):
-        raise ValueError("����ʱδ����ȫ��ԭ�����ƣ������´���Ŀ")
+        raise ValueError("导入时未保留全部原骨名称，请重新打开项目")
     for bone in armature.data.bones:
         original = originals[bone.name]
         bone["cswBoneId"] = original["id"]
@@ -93,7 +93,7 @@ def import_project(filepath):
             obj["csw_reference"] = True
             obj.hide_render = True
             if obj.type == "ARMATURE":
-                obj.name = "�����Ǽ�_�����ο�"
+                obj.name = "基础骨架_仅供参考"
                 obj.show_in_front = True
                 obj.display_type = "WIRE"
                 for pose_bone in obj.pose.bones:
@@ -102,7 +102,7 @@ def import_project(filepath):
                 obj.hide_set(True)
             obj.select_set(False)
             obj.hide_select = True
-    armature.name = "��װ�Ǽ�_�༭�˶���"
+    armature.name = "服装骨架_编辑此对象"
     armature.show_in_front = True
     bpy.ops.object.select_all(action="DESELECT")
     armature.select_set(True)
@@ -118,7 +118,7 @@ def add_test_bone(armature, name="csw_test_bone", parent_name=None):
     bpy.ops.object.mode_set(mode="EDIT")
     parent = armature.data.edit_bones.get(parent_name) if parent_name else armature.data.edit_bones[0]
     if parent is None:
-        raise ValueError("�Ҳ�����ѡ���ǣ�������ѡ���װ�Ǽ��еĹ���")
+        raise ValueError("找不到所选父骨，请重新选择服装骨架中的骨骼")
     bone = armature.data.edit_bones.new(name)
     bone.head = parent.head.copy() if parent.name in {b.name for b in armature.data.bones if anchors.is_anchor(b)} else parent.tail.copy()
     bone.tail = bone.head + Vector((0, 0.05, 0))
@@ -140,7 +140,7 @@ def add_test_chain(armature, parent_name=None):
     try:
         anchor = armature.data.edit_bones.get(parent_name) if parent_name else armature.data.edit_bones[0]
         if anchor is None:
-            raise ValueError("�Ҳ����������ǣ�������ѡ���װ�Ǽ��еĹ���")
+            raise ValueError("找不到骨链父骨，请重新选择服装骨架中的骨骼")
         origin = anchor.head.copy()
         step = anchor.matrix.to_3x3() @ Vector((0, 0.04, 0))
         names = []
@@ -165,7 +165,7 @@ def add_test_chain(armature, parent_name=None):
 def export_project(armature, filepath=None):
     target = return_path(armature)
     if filepath is not None and Path(filepath).resolve().with_suffix(".gltf") != target:
-        raise ValueError("����λ���ɲ���̶���������ʹ�á�������Ϸ��")
+        raise ValueError("返回位置由插件固定管理，请使用“返回游戏”")
     target.parent.mkdir(parents=True, exist_ok=True)
     # Publish a complete export only after validation and Blender export succeed.
     with tempfile.TemporaryDirectory(prefix=".export-", dir=target.parent) as directory:
@@ -188,14 +188,14 @@ def export_project(armature, filepath=None):
 
 def _export_project(armature, filepath):
     if not armature or armature.type != "ARMATURE" or "csw_baseline" not in armature:
-        raise ValueError("���ȴ򿪷�װ�Ǽ���Ŀ")
+        raise ValueError("请先打开服装骨架项目")
     if armature.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
     baseline = json.loads(armature["csw_baseline"])
     bpy.context.view_layer.update()
     expected_world = Matrix.Identity(4)
     if any(abs(armature.matrix_world[row][col] - expected_world[row][col]) > 1e-5 for row in range(4) for col in range(4)):
-        raise ValueError("�뱣�ֹǼܶ���任Ϊ��ʼֵ��ʹ�ñ༭ģʽ�����¹ǣ���ֱ�Ӹ��¹�ָ���������ɰ����׻��ҵ㳡�������´���")
+        raise ValueError("请保持骨架对象变换为初始值，使用编辑模式调整新骨，并直接给新骨指定父级；旧版整套换挂点场景请重新创建")
     expected = {bone["id"]: bone for bone in baseline["bones"]}
     identities = {}
     for bone in armature.data.bones:
@@ -206,27 +206,27 @@ def _export_project(armature, filepath):
             bone["cswOriginalIndex"] = -1
         uuid.UUID(identity)
         if identity in identities:
-            raise ValueError("���������ظ����볷��ԭ�Ǹ��ƣ�ʹ�á����ӷ�װ�����������¹�")
+            raise ValueError("骨骼身份重复。请撤销原骨复制，使用“添加服装骨骼”创建新骨")
         identities[identity] = bone
         if identity in expected:
             original = expected[identity]
             if bone.name != original["name"]:
-                raise ValueError(f"ԭ���ѱ���������ָ�ԭ����{original['name']}")
+                raise ValueError(f"原骨已被改名，请恢复原名：{original['name']}")
             parent_id = bone.parent.get("cswBoneId") if bone.parent else None
             if parent_id != original["parentId"]:
-                raise ValueError(f"ԭ�Ǹ��������仯����ָ���{bone.name}")
+                raise ValueError(f"原骨父级发生变化，请恢复：{bone.name}")
             imported = bone.get("cswImportMatrix")
             current = [value for row in bone.matrix_local for value in row]
             if imported is None or any(abs(a-b) > 1e-5 for a,b in zip(imported,current)):
-                raise ValueError(f"ԭ�Ǿ�ֹ��̬�����仯���볷����ԭ�ǵı༭��{bone.name}")
+                raise ValueError(f"原骨静止姿态发生变化，请撤销对原骨的编辑：{bone.name}")
     missing = set(expected) - set(identities)
     if missing:
-        raise ValueError("ԭ�й�����ɾ������ָ�ԭ��")
+        raise ValueError("原有骨骼被删除，请恢复原骨")
     filepath = Path(filepath).resolve().with_suffix(".gltf")
     filepath.parent.mkdir(parents=True, exist_ok=True)
     proxies = [obj for obj in bpy.data.objects if obj.get("csw_proxy") and any(mod.type == "ARMATURE" and mod.object == armature for mod in obj.modifiers)]
     if not proxies:
-        raise ValueError("�Ǽܸ�������ɾ���������´���Ŀ")
+        raise ValueError("骨架辅助网格被删除，请重新打开项目")
     with anchors.export_rig(armature, proxies) as (export_armature, retained):
         export_names = set(export_armature.data.bones.keys())
         bpy.ops.export_scene.gltf(filepath=str(filepath), export_format="GLTF_SEPARATE", use_selection=True,
@@ -250,21 +250,21 @@ def _export_project(armature, filepath):
                 clean_extras(child)
     clean_extras(gltf)
     if len(gltf.get("skins", [])) != 1:
-        raise ValueError("�������Ӧֻ����һ����װ�Ǽܣ������´���Ŀ")
+        raise ValueError("导出结果应只包含一个服装骨架，请重新打开项目")
     nodes = gltf["nodes"]
     bone_nodes = {}
     for index, node in enumerate(nodes):
         name = node.get("name")
         if name in export_names:
             if name in bone_nodes:
-                raise ValueError("���������ظ����ƣ�" + name)
+                raise ValueError("导出存在重复名称：" + name)
             bone_nodes[name] = index
             node.setdefault("extras", {})["cswBoneId"] = armature.data.bones[name]["cswBoneId"]
     if set(bone_nodes) != export_names:
-        raise ValueError("����ʱ��ʧ�������뱣�������������´���Ŀ")
+        raise ValueError("导出时丢失骨骼，请保留辅助网格并重新打开项目")
     joints = set(gltf["skins"][0]["joints"])
     if not set(bone_nodes.values()).issubset(joints):
-        raise ValueError("����ʱ��ʧδ��Ȩ�������뱣��������������")
+        raise ValueError("导出时丢失未加权骨骼，请保留辅助网格并重试")
     gltf.setdefault("extras", {}).update(cswProjectId=baseline["projectId"], cswSourceSha256=baseline["sourceSha256"])
     anchors.finish_gltf(armature, gltf, retained)
     filepath.write_text(json.dumps(gltf, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -287,7 +287,7 @@ def current_armature(context):
 
 def return_path(armature):
     if not armature or "csw_source_file" not in armature:
-        raise ValueError("���ȵ����װ�Ǽ���Ŀ")
+        raise ValueError("请先导入服装骨架项目")
     return _return_file_for_source(armature["csw_source_file"])
 
 
@@ -301,7 +301,7 @@ def focus_new_bones(armature, names):
 
 class CSW_OT_import(bpy.types.Operator, ImportHelper):
     bl_idname = "csw.import_project"
-    bl_label = "�����װ�Ǽ���Ŀ"
+    bl_label = "导入服装骨架项目"
     filename_ext = ".gltf"
     filter_glob: StringProperty(default="*.gltf", options={"HIDDEN"})
 
@@ -316,16 +316,16 @@ class CSW_OT_import(bpy.types.Operator, ImportHelper):
 
 class CSW_OT_return(bpy.types.Operator):
     bl_idname = "csw.return_to_game"
-    bl_label = "������Ϸ"
-    bl_description = "���������Ŀ¼�Ĺ̶�����λ�ã���Ϸ������Զ�ʶ������ѡ��·��"
+    bl_label = "返回游戏"
+    bl_description = "导出到插件目录的固定返回位置，游戏插件会自动识别，无需选择路径"
 
     def execute(self, context):
         try:
             armature = current_armature(context)
             if not armature:
-                raise ValueError("���ȵ����װ�Ǽ���Ŀ")
+                raise ValueError("请先导入服装骨架项目")
             export_project(armature)
-            self.report({"INFO"}, "�ѷ�����Ϸ���л���Ϸ������ص�����顱")
+            self.report({"INFO"}, "已返回游戏，切回游戏点击“回导并检查”")
             return {"FINISHED"}
         except Exception as error:
             self.report({"ERROR"}, str(error))
@@ -334,12 +334,12 @@ class CSW_OT_return(bpy.types.Operator):
 
 class CSW_OT_add_bone(bpy.types.Operator):
     bl_idname = "csw.add_bone"
-    bl_label = "���ӷ�װ����"
+    bl_label = "添加服装骨骼"
 
     def execute(self, context):
         armature = current_armature(context)
         if not armature or armature.type != "ARMATURE" or "csw_baseline" not in armature:
-            self.report({"ERROR"}, "���ȵ����װ�Ǽ���Ŀ")
+            self.report({"ERROR"}, "请先导入服装骨架项目")
             return {"CANCELLED"}
         selected = context.active_bone.name if context.object == armature and context.active_bone else None
         try:
@@ -352,49 +352,49 @@ class CSW_OT_add_bone(bpy.types.Operator):
 
 
 class CSW_PT_panel(bpy.types.Panel):
-    bl_label = "��װ�Ǽ�"
+    bl_label = "服装骨架"
     bl_idname = "CSW_PT_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "��װ�Ǽ�"
+    bl_category = "服装骨架"
 
     def draw(self, context):
         armature = current_armature(context)
         if not armature:
-            self.layout.label(text="������Ϸ�д�����Ŀ���� Blender")
-            self.layout.operator("csw.import_project", text="�ֶ�����Ŀ��")
+            self.layout.label(text="先在游戏中创建项目并打开 Blender")
+            self.layout.operator("csw.import_project", text="手动打开项目…")
             return
         baseline = json.loads(armature["csw_baseline"])
         helpers = [bone for bone in armature.data.bones if anchors.is_anchor(bone)]
-        self.layout.label(text=f"ԭ�� {len(baseline['bones'])} �� ���� {len(anchors.authored(armature))}")
-        self.layout.label(text=f"��ѡ����ҵ� {armature.get('csw_anchor_display_count', 0)} �� ���� {len(anchors.used(armature))}")
-        self.layout.label(text="�༭ģʽѡ��ҵ�����ӹ���")
-        self.layout.label(text="����������ѡ���ǣ���ѡ�ҵ�")
-        self.layout.label(text="Ctrl+P �� ����ƫ�ƣ��ֶ�ָ������")
-        self.layout.label(text="δʹ�õĹҵ��ڷ���ʱ�Զ�����")
+        self.layout.label(text=f"原骨 {len(baseline['bones'])} · 新增 {len(anchors.authored(armature))}")
+        self.layout.label(text=f"可选人体挂点 {armature.get('csw_anchor_display_count', 0)} · 已用 {len(anchors.used(armature))}")
+        self.layout.label(text="编辑模式选择挂点后添加骨链")
+        self.layout.label(text="已有新链：选根骨，再选挂点")
+        self.layout.label(text="Ctrl+P → 保持偏移，手动指定父级")
+        self.layout.label(text="未使用的挂点在返回时自动忽略")
         if not helpers:
-            self.layout.label(text="�����ҵ㲻����ʱ�������°����½���Ŀ")
+            self.layout.label(text="完整挂点不可用时，请在新版插件新建项目")
         self.layout.operator("csw.add_bone", icon="BONE_DATA")
         self.layout.operator("csw.add_chain", icon="CONSTRAINT_BONE")
         self.layout.separator()
         row = self.layout.row()
         row.scale_y = 1.6
         row.operator("csw.return_to_game", icon="EXPORT")
-        self.layout.label(text="����λ���ѹ������������л���Ϸ����")
-        self.layout.label(text="����ҵ��ֱ��ѡ����������")
+        self.layout.label(text="返回位置已关联，导出后切回游戏即可")
+        self.layout.label(text="人体挂点可直接选作新链父级")
         advanced = self.layout.box()
-        advanced.label(text="�����ļ�����")
-        advanced.operator("csw.import_project", text="��������Ŀ��")
+        advanced.label(text="其他文件操作")
+        advanced.operator("csw.import_project", text="打开其他项目…")
 
 
 class CSW_OT_add_chain(bpy.types.Operator):
     bl_idname = "csw.add_chain"
-    bl_label = "�������ι���"
+    bl_label = "添加三段骨链"
 
     def execute(self, context):
         armature = current_armature(context)
         if not armature or armature.type != "ARMATURE" or "csw_baseline" not in armature:
-            self.report({"ERROR"}, "���ȵ����װ�Ǽ���Ŀ")
+            self.report({"ERROR"}, "请先导入服装骨架项目")
             return {"CANCELLED"}
         selected = context.active_bone.name if context.object == armature and context.active_bone else None
         try:

@@ -16,7 +16,7 @@
     <None Include="../../tools/blender_open_project.py" Link="BlenderBridge/blender_open_project.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../blender/clothing_skeleton_bridge/__init__.py" Link="BlenderBridge/clothing_skeleton_bridge/__init__.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../blender/clothing_skeleton_bridge/anchors.py" Link="BlenderBridge/clothing_skeleton_bridge/anchors.py" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="../../docs/�ַ�ʹ��ָ��.md" Link="ʹ��ָ��.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../docs/分发使用指南.md" Link="使用指南.md" CopyToOutputDirectory="PreserveNewest" />
     <None Update="ClothingSkeleton.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

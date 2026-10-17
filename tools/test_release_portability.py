@@ -22,7 +22,7 @@ checks.mkdir(parents=True, exist_ok=True)
 # A new test run gets a new folder and cannot reuse stale evidence.
 import tempfile
 trial = Path(tempfile.mkdtemp(prefix="trial-", dir=checks))
-first, second = trial / "device-a/plugin with spaces", trial / "device-b/��� ����Ŀ¼"
+first, second = trial / "device-a/plugin with spaces", trial / "device-b/插件 测试目录"
 first.mkdir(parents=True)
 with zipfile.ZipFile(archive) as package:
     package.extractall(first)
@@ -79,5 +79,5 @@ report = dict(state="passed",packageSha256=hashlib.sha256(archive.read_bytes()).
               originalBoneCount=10,candidateBoneCount=20,coreGltfImportPassed=True,
               coreChecksPassed=int(re.search(r"(\d+) checks passed",(root / "outputs/tests/core-checks.txt").read_text(encoding="utf-8-sig")).group(1)),gameUiVerified=False,blender=a)
 (checks / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-(root / "outputs/delivery/�ַ����.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+(root / "outputs/delivery/分发检查.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 print("Packaged bridge passed both locations; fixed return, project identity, privacy and core import verified.")

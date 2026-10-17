@@ -12,7 +12,7 @@ build = root / "src/ClothingSkeleton.Plugin/bin/Release"
 destination = root / "outputs/release"
 destination.mkdir(parents=True, exist_ok=True)
 files = ["ClothingSkeleton.dll", "ClothingSkeleton.Core.dll", "ClothingSkeleton.json",
-         "ClothingSkeleton.deps.json", "ʹ��ָ��.md", "BlenderBridge/blender_open_project.py",
+         "ClothingSkeleton.deps.json", "使用指南.md", "BlenderBridge/blender_open_project.py",
          "BlenderBridge/clothing_skeleton_bridge/__init__.py", "BlenderBridge/clothing_skeleton_bridge/anchors.py"]
 private = re.compile(r"(?i)(?:(?<![a-z0-9])[a-z]:[\\/]|\\\\[a-z0-9]|/(?:Users|home)/|WorkspaceRoot|Documents[\\/]+ChatGPT)")
 entries = {}
@@ -34,11 +34,11 @@ with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as output:
         output.writestr(name, data)
 delivery = root / "outputs/delivery"
 delivery.mkdir(parents=True, exist_ok=True)
-allowed = {archive.name, "ʹ��ָ��.md", "�ַ����.json", "SHA256SUMS.txt"}
+allowed = {archive.name, "使用指南.md", "分发检查.json", "SHA256SUMS.txt"}
 if any(path.name not in allowed for path in delivery.iterdir()):
     raise RuntimeError("Private or unexpected files exist in outputs/delivery; preserve them under private-history before distribution")
 shutil.copy2(archive, delivery / archive.name)
-shutil.copy2(build / "ʹ��ָ��.md", delivery / "ʹ��ָ��.md")
+shutil.copy2(build / "使用指南.md", delivery / "使用指南.md")
 checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
 (delivery / "SHA256SUMS.txt").write_text(f"{checksum}  {archive.name}\n", encoding="utf-8")
 print(f"Created outputs/release/ClothingSkeleton-{version}.zip; clean allow-list and path scan passed.")

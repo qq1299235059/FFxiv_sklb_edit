@@ -38,8 +38,8 @@ def open_project():
         receipt.write_text(json.dumps(dict(state="opened", projectId=project_id), ensure_ascii=False), encoding="utf-8")
         print("CSW_PROJECT_OPENED", flush=True)
     except Exception as error:
-        detail=str(error).replace(str(root),"<���Ŀ¼>")
-        detail=re.sub(r"(?i)(?:[a-z]:[\\/]|\\\\)[^\r\n\t\"<>]+","<����·��>",detail)
+        detail=str(error).replace(str(root),"<插件目录>")
+        detail=re.sub(r"(?i)(?:[a-z]:[\\/]|\\\\)[^\r\n\t\"<>]+","<本地路径>",detail)
         receipt.write_text(json.dumps(dict(state="failed", projectId=project_id, error=detail), ensure_ascii=False), encoding="utf-8")
         raise
 

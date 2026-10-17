@@ -34,7 +34,7 @@ internal sealed class PenumbraPreview(IDalamudPluginInterface pluginInterface) :
             {
                 var resolved=pluginInterface.GetIpcSubscriber<Guid,string,(int,string?)>("Penumbra.ResolvePath").InvokeFunc(collection,path);
                 if(resolved.Item1!=0 || !string.Equals(resolved.Item2,Path.GetFullPath(candidatePath),StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException($"�滻��δ��Ч���ѳ�������Ԥ���������ɫ���Ϻͳ�ͻ���ȼ���Penumbra code={resolved.Item1}��");
+                    throw new InvalidOperationException($"替换尚未生效，已撤销本次预览。请检查角色集合和冲突优先级。Penumbra code={resolved.Item1}。");
             }
         }
         catch

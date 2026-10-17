@@ -18,7 +18,7 @@ public sealed partial class Plugin
     private string? lastPackage;
     private string lastValidatedReturnHash="";
     private string returnedHash="";
-    private string returnCaption="��δ�յ� Blender �޸ġ�";
+    private string returnCaption="尚未收到 Blender 修改。";
     private string observedReturn="";
     private bool returnReady;
     private bool returnExists;
@@ -82,7 +82,7 @@ public sealed partial class Plugin
                 catch(Exception e) { log.Warning("Ignoring an invalid saved candidate: {Detail}",SafeDetail(e.ToString()));lastCandidate=null;candidateDocument=null; }
             }
             workflowStep=lastCandidate is null?1:2;
-            status=lastCandidate is null?"�ѻָ��ϴ���Ŀ�����Լ����� Blender �༭��":"�ѻָ��ϴμ��ͨ���ĹǼܣ����Լ����༭��Ԥ����";
+            status=lastCandidate is null?"已恢复上次项目，可以继续在 Blender 编辑。":"已恢复上次检查通过的骨架，可以继续编辑或预览。";
         }
         ConfigureProjectReturn(false);
         blenderPathInput=blenderExecutable;
@@ -101,7 +101,7 @@ public sealed partial class Plugin
         returnExists=false;
         returnFromOtherProject=false;
         blenderLaunchPending=false;
-        returnCaption="�� Blender ��ɱ༭�󣬵����������Ϸ����";
+        returnCaption="在 Blender 完成编辑后，点击“返回游戏”。";
         if(activeProjectDirectory is not null)File.WriteAllText(Path.Combine(activeProjectDirectory,"bridge.json"),JsonSerializer.Serialize(new{schemaVersion=1,pluginRoot=Path.GetRelativePath(activeProjectDirectory,storage.Root).Replace('\\','/'),projectId=document!.ProjectId},new JsonSerializerOptions{WriteIndented=true}));
     }
 
@@ -130,8 +130,8 @@ public sealed partial class Plugin
                 if(!launch.RootElement.TryGetProperty("projectId",out var id) || id.GetGuid()==document!.ProjectId)
                 {
                     var state=launch.RootElement.GetProperty("state").GetString();
-                    if(state=="opened") {status="Blender �Ѵ򿪲����뵱ǰ�Ǽܡ��༭��ɺ�����������Ϸ����";blenderLaunchPending=false;}
-                    else if(state=="failed") {operationFailed=true;status="Blender ����Ŀʧ�ܣ�"+SafeDetail(launch.RootElement.GetProperty("error").GetString()??"");blenderLaunchPending=false;}
+                    if(state=="opened") {status="Blender 已打开并导入当前骨架。编辑完成后点击“返回游戏”。";blenderLaunchPending=false;}
+                    else if(state=="failed") {operationFailed=true;status="Blender 打开项目失败："+SafeDetail(launch.RootElement.GetProperty("error").GetString()??"");blenderLaunchPending=false;}
                 }
             }
             catch(Exception e) when(e is IOException or JsonException) { /* The child process may still be writing its receipt. */ }
@@ -158,39 +158,39 @@ public sealed partial class Plugin
             returnExists=file.Exists;
             returnFromOtherProject=false;
             returnedHash="";
-            if(!returnExists) { returnCaption="��δ�յ��޸ġ��� Blender �����������Ϸ����������Զ�ʶ��";return; }
+            if(!returnExists) { returnCaption="尚未收到修改。在 Blender 点击“返回游戏”后，这里会自动识别。";return; }
             returnedHash=Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(returnedPath)));
-            if(!complete.Exists) { returnCaption="�ļ���δ������ɣ���ʹ�� Blender ���ġ�������Ϸ����";return; }
+            if(!complete.Exists) { returnCaption="文件尚未导出完成，请使用 Blender 面板的“返回游戏”。";return; }
             using var manifest=JsonDocument.Parse(File.ReadAllText(complete.FullName));
             if(manifest.RootElement.GetProperty("projectId").GetGuid()!=document.ProjectId)
-            { returnFromOtherProject=true;returnCaption="�̶�����Ŀ¼����������Ŀ���ļ�������Ŀ��ɱ༭������������Ϸ�����ɸ��¡�";return; }
+            { returnFromOtherProject=true;returnCaption="固定返回目录中是其他项目的文件。本项目完成编辑后点击“返回游戏”即可更新。";return; }
             if(manifest.RootElement.GetProperty("gltfSha256").GetString()!=returnedHash)
-            { returnCaption="�ļ�����д����ѱ��޸ģ���� Blender ���·��ء�";return; }
+            { returnCaption="文件正在写入或已被修改，请从 Blender 重新返回。";return; }
             returnReady=true;
-            returnCaption=HasNewReturn?"���յ� Blender �޸ģ����Իص���顣":"��� Blender �޸��Ѿ����ͨ����";
+            returnCaption=HasNewReturn?"已收到 Blender 修改，可以回导检查。":"这份 Blender 修改已经检查通过。";
         }
         catch(Exception e) when(e is IOException or JsonException or KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException or UnauthorizedAccessException)
-        { returnReady=false;returnCaption="�����ļ���ʱ�޷���ȡ������� Blender ���������ԡ�";observedReturn=""; }
+        { returnReady=false;returnCaption="返回文件暂时无法读取，请完成 Blender 导出后重试。";observedReturn=""; }
     }
 
     private void DrawWorkflow()
     {
         if(showGuide) {DrawOnboarding();return;}
-        if(ImGui.SmallButton("ʹ��ָ���� Blender ����"))ShowOnboarding();
-        ImGui.TextColored(Accent,"Ϊ��װ���ӹ���");
-        ImGui.TextWrapped("������Ŀ���� Blender �༭���ٻص�����������á�");
+        if(ImGui.SmallButton("使用指引与 Blender 设置"))ShowOnboarding();
+        ImGui.TextColored(Accent,"为服装添加骨骼");
+        ImGui.TextWrapped("创建项目，在 Blender 编辑，再回到这里检查和试用。");
         if(document is not null)
-            ImGui.TextUnformatted($"��ǰ��Ŀ��{(IsOdinProject?"��ԭŮ �� �¶�����":document.Name)}  |  ԭ�� {document.Bones.Count}  ��  ���� {(candidateDocument?.Bones.Count??document.Bones.Count)-document.Bones.Count-(candidateDocument?.AnchorBindings.Count??0)}");
+            ImGui.TextUnformatted($"当前项目：{(IsOdinProject?"中原女 · 奥丁神铠":document.Name)}  |  原骨 {document.Bones.Count}  ·  新增 {(candidateDocument?.Bones.Count??document.Bones.Count)-document.Bones.Count-(candidateDocument?.AnchorBindings.Count??0)}");
         ImGui.Spacing();
         if(preview.Active)
         {
-            ImGui.TextColored(Accent,"��ʱԤ��������");
+            ImGui.TextColored(Accent,"临时预览已启用");
             ImGui.SameLine();
             ImGui.BeginDisabled(busy);
-            if(ImGui.SmallButton("����Ԥ�����ָ�"))ScheduleWorkflowAction(StopWorkflowPreview);
+            if(ImGui.SmallButton("撤销预览并恢复"))ScheduleWorkflowAction(StopWorkflowPreview);
             ImGui.EndDisabled();
         }
-        string[] steps=["1  ׼���Ǽ�","2  Blender �༭","3  �ص�������"];
+        string[] steps=["1  准备骨架","2  Blender 编辑","3  回导与试用"];
         var width=(ImGui.GetContentRegionAvail().X-16)/3;
         for(var i=0;i<steps.Length;i++)
         {
@@ -214,17 +214,17 @@ public sealed partial class Plugin
         ImGui.EndDisabled();
         ImGui.Spacing();
         ImGui.Separator();
-        ImGui.TextColored(operationFailed?new Vector4(1,0.66f,0.38f,1):Accent,busy?"���ڴ�����":operationFailed?"��Ҫ����":"������ʾ");
+        ImGui.TextColored(operationFailed?new Vector4(1,0.66f,0.38f,1):Accent,busy?"正在处理…":operationFailed?"需要处理":"操作提示");
         ImGui.TextWrapped(SafeDetail(status));
         ImGui.Spacing();
-        if(ImGui.CollapsingHeader("�߼���������"))DrawAdvancedWorkflow();
+        if(ImGui.CollapsingHeader("高级设置与检查"))DrawAdvancedWorkflow();
     }
 
     private void DrawPrepareStep()
     {
-        ImGui.TextUnformatted("ѡ��Ҫ�༭�ķ�װ�Ǽ�");
-        string[] sources=["ԭ����ԭŮ �� �¶�����","������Ϸ�Ǽ�","���عǼ��ļ�"];
-        if(ImGui.BeginCombo("�Ǽ���Դ",sources[sourceMode]))
+        ImGui.TextUnformatted("选择要编辑的服装骨架");
+        string[] sources=["原版中原女 · 奥丁神铠","其他游戏骨架","本地骨架文件"];
+        if(ImGui.BeginCombo("骨架来源",sources[sourceMode]))
         {
             for(var i=0;i<sources.Length;i++)if(ImGui.Selectable(sources[i],sourceMode==i))
             {
@@ -234,47 +234,47 @@ public sealed partial class Plugin
             }
             ImGui.EndCombo();
         }
-        if(sourceMode==1)ImGui.InputText("��Ϸ�Ǽ�·��",ref source,1024);
+        if(sourceMode==1)ImGui.InputText("游戏骨架路径",ref source,1024);
         if(sourceMode==2)
         {
-            if(ImGui.Button("ѡ�� SKLB �ļ���"))fileDialogs.OpenFileDialog("ѡ���װ�Ǽ�",".sklb",(ok,path)=>
+            if(ImGui.Button("选择 SKLB 文件…"))fileDialogs.OpenFileDialog("选择服装骨架",".sklb",(ok,path)=>
             {
                 if(!ok)return;
                 source=path;
                 var name=System.Text.RegularExpressions.Regex.Match(Path.GetFileName(path),@"^skl_c(\d{4})t(\d{4})\.sklb$",System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if(name.Success)localTargetGamePath=$"chara/human/c{name.Groups[1].Value}/skeleton/top/t{name.Groups[2].Value}/skl_c{name.Groups[1].Value}t{name.Groups[2].Value}.sklb";
             });
-            ImGui.SameLine();ImGui.TextUnformatted(string.IsNullOrWhiteSpace(source)?"δѡ���ļ�":Path.GetFileName(source));
-            ImGui.InputText("Ҫ�滻����Ϸ·��",ref localTargetGamePath,1024);
+            ImGui.SameLine();ImGui.TextUnformatted(string.IsNullOrWhiteSpace(source)?"未选择文件":Path.GetFileName(source));
+            ImGui.InputText("要替换的游戏路径",ref localTargetGamePath,1024);
         }
-        ImGui.TextWrapped(sourceMode==0?"��ȡ��Ϸԭ��װ���Ǽܣ������������Ǽ���Ϊ Blender �еĶ�λ�ο���":"��ǰ֧�����µĸ��ӹǼܣ�top���������ο����Զ�����Ϸԭ���ļ���ȡ��");
+        ImGui.TextWrapped(sourceMode==0?"读取游戏原版装备骨架，并附带基础骨架作为 Blender 中的定位参考。":"当前支持上衣的附加骨架（top）。基础参考会自动从游戏原版文件读取。");
         ImGui.Spacing();
         ImGui.BeginDisabled(string.IsNullOrWhiteSpace(source) || sourceMode==2 && !File.Exists(source));
-        if(PrimaryButton("������Ŀ���� Blender"))ScheduleRoundTrip(true);
-        if(ImGui.Button("ֻ������Ŀ"))ScheduleRoundTrip();
+        if(PrimaryButton("创建项目并打开 Blender"))ScheduleRoundTrip(true);
+        if(ImGui.Button("只创建项目"))ScheduleRoundTrip();
         ImGui.EndDisabled();
         if(document is not null)
         {
             ImGui.SameLine();
-            if(ImGui.Button("������ǰ��Ŀ"))workflowStep=1;
+            if(ImGui.Button("继续当前项目"))workflowStep=1;
         }
     }
 
     private void DrawBlenderStep()
     {
-        ImGui.TextUnformatted("�� Blender �б༭��������");
-        ImGui.TextWrapped("�򿪺���Զ������װ�ǼܺͶ�λ�ο������谲װ��չ��Ѱ���ļ���");
-        if(PrimaryButton("�򿪵�ǰ��Ŀ�� Blender"))TryUi(OpenBlender);
+        ImGui.TextUnformatted("在 Blender 中编辑新增骨骼");
+        ImGui.TextWrapped("打开后会自动导入服装骨架和定位参考，无需安装扩展或寻找文件。");
+        if(PrimaryButton("打开当前项目到 Blender"))TryUi(OpenBlender);
         ImGui.Spacing();
-        ImGui.TextWrapped("���Ҳࡰ��װ�Ǽܡ�������ӹ������������ɺ�����������Ϸ�����ص���Ϸ���ɼ�����");
-        ImGui.TextWrapped("��������ҵ����װԭ����ʾ��ͬһ�Ǽ��С�ѡ�ҵ��������������ѡ����������ѡ�ҵ㣬Ctrl+P �� ����ƫ�ơ�δ�ùҵ���ڷ���ʱ�Զ����ԡ�");
-        ImGui.TextWrapped("ԭ�й�����Ҫ��������װ������Ȩ������ģ�͹��ߴ�����");
+        ImGui.TextWrapped("在右侧“服装骨架”面板添加骨骼或骨链。完成后点击“返回游戏”，回到游戏即可继续。");
+        ImGui.TextWrapped("完整人体挂点与服装原骨显示在同一骨架中。选挂点后添加新链，或选新链根骨再选挂点，Ctrl+P → 保持偏移。未用挂点会在返回时自动忽略。");
+        ImGui.TextWrapped("原有骨骼需要保留；服装网格与权重仍由模型工具处理。");
         ImGui.Spacing();
         ImGui.TextColored(returnReady?Good:Accent,returnCaption);
         ImGui.BeginDisabled(!returnReady);
-        if(ImGui.Button("�ص������",new Vector2(-1,36)))ScheduleAppend();
+        if(ImGui.Button("回导并检查",new Vector2(-1,36)))ScheduleAppend();
         ImGui.EndDisabled();
-        if(ImGui.Button("����Ŀ�ļ���"))TryUi(()=>OpenFolder(activeProjectDirectory!));
+        if(ImGui.Button("打开项目文件夹"))TryUi(()=>OpenFolder(activeProjectDirectory!));
     }
 
     private void DrawReturnStep()
@@ -283,35 +283,35 @@ public sealed partial class Plugin
         {
             ImGui.TextWrapped(returnCaption);
             ImGui.BeginDisabled(!returnReady);
-            if(PrimaryButton("��� Blender �޸�"))ScheduleAppend();
+            if(PrimaryButton("检查 Blender 修改"))ScheduleAppend();
             ImGui.EndDisabled();
-            if(!returnReady && ImGui.Button("ǰ�� Blender �༭"))workflowStep=1;
+            if(!returnReady && ImGui.Button("前往 Blender 编辑"))workflowStep=1;
         }
         if(candidateDocument is null || document is null)return;
         ImGui.Spacing();
-        ImGui.TextColored(CanUseCandidate?Good:Accent,CanUseCandidate?"�Ǽܼ��ͨ��":"Blender �����޸ģ��������¼��");
-        ImGui.TextUnformatted($"���� {document.Bones.Count} ��ԭ��  ��  ���� {candidateDocument.Bones.Count-document.Bones.Count-candidateDocument.AnchorBindings.Count} ������  ��  ����ҵ� {candidateDocument.AnchorBindings.Count}");
+        ImGui.TextColored(CanUseCandidate?Good:Accent,CanUseCandidate?"骨架检查通过":"Blender 有新修改，请先重新检查");
+        ImGui.TextUnformatted($"保留 {document.Bones.Count} 根原骨  ·  新增 {candidateDocument.Bones.Count-document.Bones.Count-candidateDocument.AnchorBindings.Count} 根骨骼  ·  所需挂点 {candidateDocument.AnchorBindings.Count}");
         if(candidateDocument.AnchorSchemaVersion==1)
         {
-            ImGui.TextColored(Accent,"δʹ�õ�����ҵ��Ѻ��ԣ�ԭ��װ�ҽӱ��֡�");
-            if(candidateDocument.AnchorBindings.Count>0)ImGui.TextWrapped("�����ҵ㣺"+string.Join("��",candidateDocument.AnchorBindings.Select(a=>a.BoneName)));
-            ImGui.TextWrapped("�Ѻ˶�ԭ�Ǿ�ֹ��̬�����������ź�Ĺ����㡣��������ʵ���涯��������Ϸ�в��ԣ���װȨ������������");
+            ImGui.TextColored(Accent,"未使用的人体挂点已忽略，原服装挂接保持。");
+            if(candidateDocument.AnchorBindings.Count>0)ImGui.TextWrapped("保留挂点："+string.Join("、",candidateDocument.AnchorBindings.Select(a=>a.BoneName)));
+            ImGui.TextWrapped("已核对原骨静止姿态、父级和重排后的骨骼层。各条链的实际随动仍需在游戏中测试，服装权重另行制作。");
         }
-        else ImGui.TextWrapped("�Ѻ˶�ԭ�ǡ���������ֹ��̬�������㡣�����ڴ��Ŷ�Ӧװ���Ľ�ɫ�����á�");
+        else ImGui.TextWrapped("已核对原骨、父级、静止姿态及骨骼层。可以在穿着对应装备的角色上试用。");
         ImGui.BeginDisabled(!CanUseCandidate);
-        if(PrimaryButton(preview.Active?"���µ�ǰ��ɫ��Ԥ��":"�ڵ�ǰ��ɫ��Ԥ��"))ScheduleWorkflowAction(PreviewCurrentPlayer);
+        if(PrimaryButton(preview.Active?"更新当前角色的预览":"在当前角色上预览"))ScheduleWorkflowAction(PreviewCurrentPlayer);
         ImGui.EndDisabled();
-        if(ImGui.Button("�����Ϸ���Ƿ��Ѽ���"))ScheduleWorkflowAction(CheckWorkflowRuntime);
-        if(runtimeVerified)ImGui.TextColored(Good,"ȫ�������������ҵ�����Դ�ļ��뵱ǰ�汾һ�¡�");
+        if(ImGui.Button("检查游戏内是否已加载"))ScheduleWorkflowAction(CheckWorkflowRuntime);
+        if(runtimeVerified)ImGui.TextColored(Good,"全部新增骨骼已找到，资源文件与当前版本一致。");
         ImGui.TextWrapped(runtimeReport);
         ImGui.Spacing();
         ImGui.BeginDisabled(!CanUseCandidate);
-        if(ImGui.Button("���͵� Penumbra"))ScheduleWorkflowAction(SendWorkflowPackage);
+        if(ImGui.Button("发送到 Penumbra"))ScheduleWorkflowAction(SendWorkflowPackage);
         ImGui.SameLine();
-        if(ImGui.Button("������ Mod ��װ��"))ScheduleWorkflowAction(ExportWorkflowPackage);
+        if(ImGui.Button("仅保存 Mod 安装包"))ScheduleWorkflowAction(ExportWorkflowPackage);
         ImGui.EndDisabled();
-        ImGui.TextWrapped(IsOdinProject?"��װ���Զ�������ԭŮ�¶������ĹǼܹ������� Penumbra �����ú�ɳ��ڱ�����":"��װ������ԭ��װ���Ǽ�·������װ��û�и��ӹǼܹ�������Ҫ�����ù�����");
-        ImGui.TextWrapped("��ʱԤ��ʹ�õ�ǰ��ɫ�� Penumbra ���ϣ��ü����е�������ɫҲ���ܵ�Ӱ�졣");
+        ImGui.TextWrapped(IsOdinProject?"安装包自动包含中原女奥丁神铠的骨架关联；在 Penumbra 中启用后可长期保留。":"安装包沿用原有装备骨架路径。若装备没有附加骨架关联，需要先配置关联。");
+        ImGui.TextWrapped("临时预览使用当前角色的 Penumbra 集合，该集合中的其他角色也会受到影响。");
     }
 
     private static bool PrimaryButton(string label)=>ImGui.Button(label,new Vector2(-1,38));
@@ -319,53 +319,53 @@ public sealed partial class Plugin
     private void DrawAdvancedWorkflow()
     {
         ImGui.BeginDisabled(busy);
-        if(ImGui.Button("���� Blender"))ShowOnboarding();
-        ImGui.TextWrapped("�����ļ��̶������ڣ����Ŀ¼ / BlenderReturn / edited.gltf��");
-        if(ImGui.Button("�򿪷����ļ���"))TryUi(()=>OpenFolder(Path.GetDirectoryName(storage.ReturnFile)!));
+        if(ImGui.Button("设置 Blender"))ShowOnboarding();
+        ImGui.TextWrapped("返回文件固定保存于：插件目录 / BlenderReturn / edited.gltf。");
+        if(ImGui.Button("打开返回文件夹"))TryUi(()=>OpenFolder(Path.GetDirectoryName(storage.ReturnFile)!));
         if(activeProjectDirectory is not null)
         {
-            if(ImGui.Button("�򿪵�ǰ��Ŀ�ļ���"))TryUi(()=>OpenFolder(activeProjectDirectory));
+            if(ImGui.Button("打开当前项目文件夹"))TryUi(()=>OpenFolder(activeProjectDirectory));
         }
         ImGui.Separator();
-        ImGui.Checkbox("�ֶ�ָ��Ԥ������",ref useChosenCollection);
+        ImGui.Checkbox("手动指定预览集合",ref useChosenCollection);
         if(useChosenCollection)
         {
-            if(ImGui.Button("ˢ�¼���"))ScheduleWorkflowAction(()=>collections=preview.Collections());
-            if(ImGui.BeginCombo("����",collections.GetValueOrDefault(selectedCollection,"��ѡ�񼯺�")))
+            if(ImGui.Button("刷新集合"))ScheduleWorkflowAction(()=>collections=preview.Collections());
+            if(ImGui.BeginCombo("集合",collections.GetValueOrDefault(selectedCollection,"请选择集合")))
             {
                 foreach(var pair in collections)if(ImGui.Selectable(pair.Value,pair.Key==selectedCollection))selectedCollection=pair.Key;
                 ImGui.EndCombo();
             }
         }
-        ImGui.InputInt("Ԥ�����ȼ�",ref previewPriority);
-        ImGui.InputText("��װģ��·��",ref modelPath,1024);
-        if(ImGui.Button("���ԭ��ģ�͹�����"))ScheduleWorkflowAction(CheckModel);
+        ImGui.InputInt("预览优先级",ref previewPriority);
+        ImGui.InputText("服装模型路径",ref modelPath,1024);
+        if(ImGui.Button("检查原版模型骨骼表"))ScheduleWorkflowAction(CheckModel);
         ImGui.TextWrapped(modelReport);
-        if(ImGui.TreeNode("������ϸ"))
+        if(ImGui.TreeNode("骨骼明细"))
         {
             if(document is not null)
             {
                 var ordered=ClothingSkeleton.Core.SkeletonValidator.OrderedForAppend(candidateDocument??document,document);
                 var anchorIds=(candidateDocument?.AnchorBindings??[]).Select(a=>a.BoneId).ToHashSet();
-                foreach(var bone in ordered.Take(100))ImGui.TextUnformatted($"{(anchorIds.Contains(bone.Id)?"�ҵ�":bone.OriginalIndex<0?"����":"ԭ��")}  {bone.Name}  ���� {ordered.FirstOrDefault(b=>b.Id==bone.ParentId)?.Name??"��"}");
+                foreach(var bone in ordered.Take(100))ImGui.TextUnformatted($"{(anchorIds.Contains(bone.Id)?"挂点":bone.OriginalIndex<0?"新增":"原骨")}  {bone.Name}  父级 {ordered.FirstOrDefault(b=>b.Id==bone.ParentId)?.Name??"无"}");
             }
             ImGui.TreePop();
         }
-        if(lastPackage is not null && ImGui.Button("�򿪰�װ�������ļ���"))TryUi(()=>OpenFolder(Path.GetDirectoryName(lastPackage)!));
+        if(lastPackage is not null && ImGui.Button("打开安装包所在文件夹"))TryUi(()=>OpenFolder(Path.GetDirectoryName(lastPackage)!));
         ImGui.EndDisabled();
     }
 
     private void OpenBlender()
     {
-        if(activeProjectDirectory is null)throw new InvalidOperationException("���ȴ����Ǽ���Ŀ��");
+        if(activeProjectDirectory is null)throw new InvalidOperationException("请先创建骨架项目。");
         if(!EnsureBlenderConfigured(()=>TryUi(OpenBlender)))return;
         if(openedBlender is not null && !openedBlender.HasExited && openedBlenderProject==activeProjectDirectory)
-        {status="��ǰ��Ŀ���� Blender �д򿪣����л��� Blender �����༭��";return;}
+        {status="当前项目已在 Blender 中打开，请切换到 Blender 继续编辑。";return;}
         var resources=storage.Session;
         var temporary=Path.Combine(resources,"tmp");
         Directory.CreateDirectory(temporary);
         var script=Path.Combine(storage.Bridge,"blender_open_project.py");
-        if(!File.Exists(script))throw new FileNotFoundException("���ȱ�� Blender �Žӹ��ߣ������½�ѹ�����������");
+        if(!File.Exists(script))throw new FileNotFoundException("插件缺少 Blender 桥接工具，请重新解压完整插件包。");
         var start=new ProcessStartInfo(blenderExecutable){UseShellExecute=false,WorkingDirectory=storage.Root,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Normal,RedirectStandardOutput=true,RedirectStandardError=true};
         start.Environment["BLENDER_USER_RESOURCES"]=resources;
         start.Environment["TEMP"]=temporary;
@@ -377,7 +377,7 @@ public sealed partial class Plugin
         start.ArgumentList.Add(Path.Combine(activeProjectDirectory,"skeleton.gltf"));
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(storage.ReturnFile)!,"blender-launch.json"),JsonSerializer.Serialize(new{state="opening",projectId=document!.ProjectId}));
         ReleaseBlenderHandle();
-        openedBlender=Process.Start(start)??throw new InvalidOperationException("Blender δ��������");
+        openedBlender=Process.Start(start)??throw new InvalidOperationException("Blender 未能启动。");
         openedBlender.OutputDataReceived+=OnBlenderOutput;
         openedBlender.ErrorDataReceived+=OnBlenderOutput;
         openedBlender.BeginOutputReadLine();
@@ -385,7 +385,7 @@ public sealed partial class Plugin
         blenderLaunchPending=true;
         openedBlenderProject=activeProjectDirectory;
         workflowStep=1;
-        status="Blender ���ڴ򿪵�ǰ��Ŀ���༭��ɺ����Ҳࡰ��װ�Ǽܡ�����еġ�������Ϸ����";
+        status="Blender 正在打开当前项目。编辑完成后点击右侧“服装骨架”面板中的“返回游戏”。";
         SaveWorkflow();
         WriteStatus("blender-opened",status);
     }
@@ -421,16 +421,16 @@ public sealed partial class Plugin
     {
         RefreshReturnedFile();
         CheckCandidate();
-        if(!CanUseCandidate)throw new InvalidOperationException("Blender �����޸ģ��������¼�顣");
+        if(!CanUseCandidate)throw new InvalidOperationException("Blender 有新修改，请先重新检查。");
         var effective=pluginInterface.GetIpcSubscriber<int,(bool,bool,(Guid,string))>("Penumbra.GetCollectionForObject.V5").InvokeFunc(0);
-        if(!effective.Item1 || effective.Item3.Item1==Guid.Empty)throw new InvalidOperationException("û���ҵ���ǰ��ɫ�� Penumbra ���ϣ����Ƚ�����Ϸ������ Penumbra��");
+        if(!effective.Item1 || effective.Item3.Item1==Guid.Empty)throw new InvalidOperationException("没有找到当前角色的 Penumbra 集合，请先进入游戏并启用 Penumbra。");
         var collection=useChosenCollection?selectedCollection:effective.Item3.Item1;
         preview.Start(collection,document!.SourceGamePath,lastCandidate!,previewPriority,IsOdinProject?new ClothingSkeleton.Core.MidlanderFemaleEst(100,9100).GamePath:null);
         pluginInterface.GetIpcSubscriber<int,int,object?>("Penumbra.RedrawObject.V5").InvokeAction(0,0);
         runtimeVerified=false;
-        runtimeReport="�������ػ棬�Ժ��Զ����ʵʱ�Ǽܡ��봩�Ŷ�Ӧװ����";
+        runtimeReport="已请求重绘，稍后自动检查实时骨架。请穿着对应装备。";
         runtimeCheckAt=DateTime.UtcNow.AddSeconds(3);
-        status=$"Ԥ����Ӧ�õ�{(useChosenCollection?"��ѡ����":effective.Item3.Item2)}������ʱ������";
+        status=$"预览已应用到{(useChosenCollection?"所选集合":effective.Item3.Item2)}，可随时撤销。";
     }
 
     private void StopWorkflowPreview()
@@ -439,8 +439,8 @@ public sealed partial class Plugin
         runtimeCheckAt=null;
         runtimeVerified=false;
         pluginInterface.GetIpcSubscriber<int,int,object?>("Penumbra.RedrawObject.V5").InvokeAction(0,0);
-        runtimeReport="��ʱԤ���ѳ������Ѱ�װ�� Mod �԰� Penumbra ������Ч��";
-        status="�ѳ�����ʱԤ���������ػ��ɫ��";
+        runtimeReport="临时预览已撤销。已安装的 Mod 仍按 Penumbra 设置生效。";
+        status="已撤销临时预览并请求重绘角色。";
     }
 
     private void CheckWorkflowRuntime()
@@ -453,18 +453,18 @@ public sealed partial class Plugin
     private void ExportWorkflowPackage()
     {
         RefreshReturnedFile();
-        if(!CanUseCandidate)throw new InvalidOperationException("���ȼ�����µ� Blender �޸ġ�");
+        if(!CanUseCandidate)throw new InvalidOperationException("请先检查最新的 Blender 修改。");
         if(IsOdinProject)ExportFemaleEstPackage();else ExportPackage();
-        status="Mod ��װ���ѱ��棬���ڸ߼������д������ļ��С�";
+        status="Mod 安装包已保存，可在高级设置中打开所在文件夹。";
     }
 
     private void SendWorkflowPackage()
     {
         ExportWorkflowPackage();
         var result=pluginInterface.GetIpcSubscriber<string,int>("Penumbra.InstallMod.V5").InvokeFunc(lastPackage!);
-        if(result!=0)throw new InvalidOperationException($"��װ���ѱ��棬�� Penumbra δ���գ�{result}������ȷ�� Penumbra �����á�");
+        if(result!=0)throw new InvalidOperationException($"安装包已保存，但 Penumbra 未接收（{result}）。请确认 Penumbra 已启用。");
         pluginInterface.GetIpcSubscriber<int,string,string,int>("Penumbra.OpenMainWindow.V5").InvokeFunc(1,"","");
-        status="��װ���ѷ��͵� Penumbra�����ڵ�����洦������ѡ�������Ҫ�ļ��������á�";
+        status="安装包已发送到 Penumbra，请在导入界面处理重名选项，并在需要的集合中启用。";
     }
 
     private void WriteWorkflowStatus()

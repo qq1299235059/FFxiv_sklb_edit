@@ -11,7 +11,7 @@ public static class HavokXmlAppend
     {
         if(plan.Info.ProjectId!=baseline.ProjectId || plan.Info.SourceSha256!=baseline.SourceSha256 ||
             plan.AddedAnchors.Count!=candidate.AnchorBindings.Count || candidate.AnchorSchemaVersion!=1)
-            throw new InvalidDataException("�ҵ�ƻ��뷵����Ŀ��ƥ�䡣");
+            throw new InvalidDataException("挂点计划与返回项目不匹配。");
         var xml=XDocument.Parse(Apply(trustedTemplateXml,baseline,candidate),LoadOptions.PreserveWhitespace);
         var skeleton=xml.Root!.Elements("object").Single(e=>(string?)e.Attribute("type")=="hkaSkeleton");
         XElement Array(string name)=>skeleton.Elements("array").Single(e=>(string?)e.Attribute("name")==name);
@@ -40,7 +40,7 @@ public static class HavokXmlAppend
         if(candidate.AttachmentTargetBone is{} target && (attachment is null || attachment.Target.BoneName!=target) ||
             attachment is not null && (candidate.AttachmentTargetBone!=attachment.Target.BoneName ||
                 attachment.Info.ProjectId!=baseline.ProjectId || attachment.Info.SourceGamePath!=baseline.SourceGamePath || attachment.Info.SourceSha256!=baseline.SourceSha256))
-            throw new InvalidDataException("����ҽӱ�������ԭ��Ǽ����ɲ�У��ҽӼƻ���");
+            throw new InvalidDataException("人体挂接必须先由原版骨架生成并校验挂接计划。");
         if (baseline.MapperCount != 0 || baseline.LocalFrameCount != 0 || baseline.PartitionCount != 0 || baseline.ExtraVariantCount != 0)
             throw new InvalidDataException("This append prototype supports simple extra-skeleton templates only. Mapper/partition/local-frame editing has not been validated.");
         using var reader = XmlReader.Create(new StringReader(trustedTemplateXml), new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 32 * 1024 * 1024 });

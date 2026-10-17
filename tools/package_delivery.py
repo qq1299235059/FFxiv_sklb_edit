@@ -65,15 +65,15 @@ packages=[Path(report["estPackage"])] if report.get("estPackage") else sorted((r
 for path in packages:
     with zipfile.ZipFile(path) as archive:
         if archive.read("files/skeleton.sklb") == candidate_bytes:
-            shutil.copy2(path, delivery / "ԭ��¶������Ǽܲ���.pmp")
+            shutil.copy2(path, delivery / "原版奥丁神铠骨架测试.pmp")
             if report.get("estPackage"):
-                shutil.copy2(path, delivery / "��ԭŮ�¶�����_EST9100.pmp")
+                shutil.copy2(path, delivery / "中原女奥丁神铠_EST9100.pmp")
             break
 else:
     raise RuntimeError("No matching tested PMP exists")
-for name in ["����ָ��.md", "��������.md", "�����ο�.md"]:
+for name in ["操作指南.md", "开发交接.md", "技术参考.md"]:
     shutil.copy2(root / "docs" / name, delivery / name)
-shutil.copy2(unit_log, delivery / "���ļ���¼.txt")
+shutil.copy2(unit_log, delivery / "核心检查记录.txt")
 report.update(
     coreChecksPassed=int(unit_result.group(1)),
     sourceSha256=validation["sourceSha256"],
@@ -85,7 +85,7 @@ report.update(
     sampleDirectory=str(sample),
     samplePurpose="Local private original-equipment skeleton conversion and append test; no weighted garment or motion verification",
 )
-(delivery / "���Ա���.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+(delivery / "测试报告.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 if report.get("estPackage"):
     for name in ["est-assignment.json","deployment-before.json","deployment.json","metadata-effect-test.json","metadata-editor.png"]:
         source=root / "outputs/female-est-test" / name
@@ -94,7 +94,7 @@ if report.get("runtimeActorBonesVerified"):
     for name in ["runtime-bones.json","ktisis-bone-list.png","ktisis-selected-chain-root.png","vfx-layers.png"]:
         source=root / "outputs/chain-test" / name
         if source.is_file():shutil.copy2(source,delivery / name)
-workflow_report=root / "outputs/workflow-test/�����̼��.json"
+workflow_report=root / "outputs/workflow-test/简化流程检查.json"
 if workflow_report.is_file():
     workflow=json.loads(workflow_report.read_text(encoding="utf-8-sig"))
     if workflow["state"]!="passed" or workflow["pluginSha256"]!=report["pluginSha256"]:
@@ -103,9 +103,9 @@ if workflow_report.is_file():
         raise RuntimeError("Blender bridge changed after workflow verification")
     if workflow["blender"]["launcherSha256"]!=hashlib.sha256((root / "tools/blender_open_project.py").read_bytes()).hexdigest():
         raise RuntimeError("Blender launcher changed after workflow verification")
-    shutil.copy2(workflow_report,delivery / "�����̼��.json")
+    shutil.copy2(workflow_report,delivery / "简化流程检查.json")
     report["simplifiedWorkflow"]=workflow
-    (delivery / "���Ա���.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
+    (delivery / "测试报告.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
 manifest = {str(p.relative_to(delivery)):hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted(delivery.rglob("*")) if p.is_file() and p.name != "SHA256.json"}
 (delivery / "SHA256.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

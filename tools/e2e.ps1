@@ -28,7 +28,7 @@ foreach($operation in @('model-check','penumbra-status','preview-selftest','pack
 $candidate=Get-ChildItem -LiteralPath $project.FullName -Directory -Filter 'appended-*' | Sort-Object Name -Descending | Select-Object -First 1
 $result=[ordered]@{
     state='passed'; timestamp=[DateTimeOffset]::UtcNow.ToString('O');
-    originalItem='�¶�����'; itemId=3262; equipmentSetId=100; raceCode='c0201';
+    originalItem='奥丁神铠'; itemId=3262; equipmentSetId=100; raceCode='c0201';
     originalSkeleton='chara/human/c0201/skeleton/top/t0100/skl_c0201t0100.sklb';
     gameVersion='2026.10.06.0000.0000'; dalamudVersion='15.0.3.7';
     projectDirectory=[IO.Path]::GetRelativePath($pluginDirectory,$project.FullName); candidateDirectory=[IO.Path]::GetRelativePath($pluginDirectory,$candidate.FullName);

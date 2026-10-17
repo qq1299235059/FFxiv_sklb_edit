@@ -24,7 +24,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private bool busy;
     private string source = "chara/human/c0201/skeleton/top/t0100/skl_c0201t0100.sklb";
     private string localTargetGamePath = "chara/human/c0201/skeleton/top/t0100/skl_c0201t0100.sklb";
-    private string status = "ѡ��Ǽܺ󣬴�����Ŀ���ɿ�ʼ��";
+    private string status = "选择骨架后，创建项目即可开始。";
     private SkeletonDocument? document;
     private SkeletonDocument? candidateDocument;
     private string? activeProjectDirectory;
@@ -38,8 +38,8 @@ public sealed partial class Plugin : IDalamudPlugin
     private int previewPriority=100;
     private string? lastCandidate;
     private string modelPath="chara/equipment/e0100/model/c0201e0100_top.mdl";
-    private string modelReport="��δ����װģ�͡�";
-    private string runtimeReport="��δ����ɫʵʱ�������ļ�У��ͨ����������ɫ�Ѽ��ء�";
+    private string modelReport="尚未检查服装模型。";
+    private string runtimeReport="尚未检查角色实时骨骼。文件校验通过不代表角色已加载。";
     private bool disposed;
 
     public Plugin(IDalamudPluginInterface pluginInterface, ICommandManager commands, IDataManager data, IFramework framework, IPluginLog log,IObjectTable objects)
@@ -51,7 +51,7 @@ public sealed partial class Plugin : IDalamudPlugin
         this.log = log;
         this.objects=objects;
         preview=new(pluginInterface);
-        storage=new PluginStorage(pluginInterface.AssemblyLocation.DirectoryName??throw new InvalidOperationException("�޷���λ�����װĿ¼��"));
+        storage=new PluginStorage(pluginInterface.AssemblyLocation.DirectoryName??throw new InvalidOperationException("无法定位插件安装目录。"));
         outputRoot=storage.Projects;
         commandFile=Path.Combine(storage.Root,"Development","runtime-command.json");
         Directory.CreateDirectory(outputRoot);
@@ -64,7 +64,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(activeProjectDirectory is not null) lastCandidate=Directory.GetDirectories(activeProjectDirectory,"appended-*").OrderDescending().Select(d=>Path.Combine(d,"candidate.sklb")).FirstOrDefault(File.Exists);
         if(lastCandidate is not null) candidateDocument=SkeletonDocument.Load(Path.Combine(Path.GetDirectoryName(lastCandidate)!,"validated-exchange.json"));
         InitializeWorkflow();
-        commands.AddHandler("/csw", new CommandInfo(OnCommand) { HelpMessage = "�򿪷�װ�Ǽܹ���̨��/csw selftest ����ԭ��������顣" });
+        commands.AddHandler("/csw", new CommandInfo(OnCommand) { HelpMessage = "打开服装骨架工作台。/csw selftest 运行原样往返检查。" });
         pluginInterface.UiBuilder.Draw += Draw;
         pluginInterface.UiBuilder.OpenMainUi += Open;
         pluginInterface.UiBuilder.OpenConfigUi += Open;
@@ -115,7 +115,7 @@ public sealed partial class Plugin : IDalamudPlugin
             {
                 var receipt=Path.Combine(Path.GetDirectoryName(outputRoot)!,"female-est-test","est-assignment.json");
                 using var saved=JsonDocument.Parse(File.ReadAllText(receipt));
-                var path=storage.Resolve(saved.RootElement.GetProperty("package").GetString())??throw new InvalidDataException("��Ч�İ�װ��λ�á�");
+                var path=storage.Resolve(saved.RootElement.GetProperty("package").GetString())??throw new InvalidDataException("无效的安装包位置。");
                 if(!File.Exists(path)) throw new FileNotFoundException("Export the EST test first.");
                 var result=pluginInterface.GetIpcSubscriber<string,int>("Penumbra.InstallMod.V5").InvokeFunc(path);
                 if(result!=0) throw new InvalidOperationException($"Penumbra install queue rejected the package: {result}");
@@ -135,21 +135,21 @@ public sealed partial class Plugin : IDalamudPlugin
                 if(!effective.Item1)throw new InvalidOperationException("Local player is unavailable.");
                 preview.Start(effective.Item3.Item1,document!.SourceGamePath,lastCandidate!,3000);
                 pluginInterface.GetIpcSubscriber<int,int,object?>("Penumbra.RedrawObject.V5").InvokeAction(0,0);
-                WriteStatus("runtime-preview-applied","�ѽ���֤��Ĳ��ԹǼ���ʱָ���ɫʵ��ʹ�õ�ԭ��װ��·�����������ػ汾�塣");
+                WriteStatus("runtime-preview-applied","已将验证后的测试骨架临时指向角色实际使用的原版装备路径，并请求重绘本体。");
             }
             else if(action=="stop-preview")
             {
                 preview.Stop();
-                WriteStatus("preview-stopped","�ѳ������������ʱ·���滻��");
+                WriteStatus("preview-stopped","已撤销本插件的临时路径替换。");
             }
-            else if(action=="show-ui") { open=true; WriteStatus("ui-opened","��װ�Ǽܹ���̨�Ѵ򿪡�"); }
+            else if(action=="show-ui") { open=true; WriteStatus("ui-opened","服装骨架工作台已打开。"); }
             else if(action=="workflow-status") WriteWorkflowStatus();
             else if(action=="reload-est")
             {
                 var result=pluginInterface.GetIpcSubscriber<string,string,int>("Penumbra.ReloadMod.V5").InvokeFunc("CSW Midlander Female Odin EST 9100","");
                 if(result!=0)throw new InvalidOperationException($"Cannot reload the installed EST test: {result}");
                 pluginInterface.GetIpcSubscriber<int,int,object?>("Penumbra.RedrawObject.V5").InvokeAction(0,0);
-                WriteStatus("est-reloaded","�����¼�����ԭŮ���� Mod���������ػ浱ǰ��ɫ��");
+                WriteStatus("est-reloaded","已重新加载中原女测试 Mod，并请求重绘当前角色。");
             }
             else throw new InvalidDataException("Unknown development operation.");
         }
@@ -172,7 +172,7 @@ public sealed partial class Plugin : IDalamudPlugin
             ImGui.SetNextWindowPos(viewport.WorkPos+viewport.WorkSize/2,ImGuiCond.Always,new Vector2(0.5f));
             initialSizeSet=true;
         }
-        if (ImGui.Begin("��װ�Ǽܹ���̨###ClothingSkeleton", ref open)) DrawWorkflow();
+        if (ImGui.Begin("服装骨架工作台###ClothingSkeleton", ref open)) DrawWorkflow();
         ImGui.End();
         DrawBlenderSetupPopup();
         fileDialogs.Draw();
@@ -186,20 +186,20 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void CheckCandidate()
     {
-        if(candidateDocument?.AttachmentTargetBone is not null)throw new InvalidOperationException("�ɰ����׻��ҵ�ĺ�ѡ��ͣ�ã������°������ҵ�Ǽ����´�����Ŀ��");
-        if(lastCandidate is null || document is null) throw new InvalidOperationException("���Ȼص������ Blender �޸ġ�");
+        if(candidateDocument?.AttachmentTargetBone is not null)throw new InvalidOperationException("旧版整套换挂点的候选已停用，请用新版完整挂点骨架重新创建项目。");
+        if(lastCandidate is null || document is null) throw new InvalidOperationException("请先回导并检查 Blender 修改。");
         var report=Path.Combine(Path.GetDirectoryName(lastCandidate)!,"validation.json");
         using var verified=JsonDocument.Parse(File.ReadAllText(report));
         var hash=SklbContainer.Parse(File.ReadAllBytes(lastCandidate)).Sha256;
-        if(verified.RootElement.GetProperty("candidateSha256").GetString()!=hash) throw new InvalidDataException("�Ǽ��ļ��ڼ������仯�������»ص���顣");
-        if(verified.RootElement.GetProperty("sourceGamePath").GetString()!=document.SourceGamePath || verified.RootElement.GetProperty("sourceSha256").GetString()!=document.SourceSha256) throw new InvalidDataException("�Ǽ��뵱ǰ��Ŀ��ƥ�䣬�����»ص���顣");
+        if(verified.RootElement.GetProperty("candidateSha256").GetString()!=hash) throw new InvalidDataException("骨架文件在检查后发生变化，请重新回导检查。");
+        if(verified.RootElement.GetProperty("sourceGamePath").GetString()!=document.SourceGamePath || verified.RootElement.GetProperty("sourceSha256").GetString()!=document.SourceSha256) throw new InvalidDataException("骨架与当前项目不匹配，请重新回导检查。");
     }
 
     private void ExportPackage()
     {
         CheckCandidate();
         var path=PenumbraModPackage.Export(document!.SourceGamePath,lastCandidate!,Path.Combine(Path.GetDirectoryName(outputRoot)!,"mods","clothing-skeleton-"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-ffff")));
-        status="���԰��ѵ�����"+Path.GetFileName(path);
+        status="测试包已导出："+Path.GetFileName(path);
         lastPackage=path;
         WriteStatus("package-exported",status);
     }
@@ -209,7 +209,7 @@ public sealed partial class Plugin : IDalamudPlugin
         CheckCandidate();
         const string originalPath="chara/human/c0201/skeleton/top/t0100/skl_c0201t0100.sklb";
         if(document!.SourceGamePath!=originalPath || candidateDocument is null || candidateDocument.Bones.Count<=document.Bones.Count)
-            throw new InvalidOperationException("�ȶ�ȡ��ԭŮԭ��¶��Ǽ� c0201/t0100����ʵ��׷������һ��������");
+            throw new InvalidOperationException("先读取中原女原版奥丁骨架 c0201/t0100，并实际追加至少一根骨骼。");
         var assignment=new MidlanderFemaleEst(100,9100,100);
         if(data.FileExists(assignment.GamePath)) throw new InvalidOperationException("Test skeleton ID 9100 already exists in the original game.");
         var est=data.GetFile<Lumina.Data.FileResource>("chara/xls/charadb/extra_top.est")?.Data ?? throw new FileNotFoundException("Original top EST is missing.");
@@ -229,7 +229,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(Directory.Exists(destination) || File.Exists(destination+".pmp"))destination+="-"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-ffff");
         var path=PenumbraModPackage.Export(assignment.GamePath,lastCandidate!,destination,assignment);
         File.WriteAllText(Path.Combine(directory,"est-assignment.json"),JsonSerializer.Serialize(new{sourceGamePath=originalPath,targetGamePath=assignment.GamePath,actualLoadedPathRedirect=assignment.SourceGamePath,setId=100,race="Midlander",gender="Female",slot="Body",originalSkeletonId=100,newSkeletonId=9100,candidatePath=storage.Relative(lastCandidate),candidateSha256=SklbContainer.Parse(File.ReadAllBytes(lastCandidate!)).Sha256,package=storage.Relative(path),timestamp=DateTimeOffset.UtcNow},new JsonSerializerOptions{WriteIndented=true}));
-        status="��ԭŮ�¶� EST ���԰��ѵ�����e0100 �� Body �Ǽ� 100 �� 9100��";
+        status="中原女奥丁 EST 测试包已导出：e0100 的 Body 骨架 100 → 9100。";
         lastPackage=path;
         WriteStatus("est-package-exported",status);
     }
@@ -264,7 +264,7 @@ public sealed partial class Plugin : IDalamudPlugin
         File.WriteAllText(Path.Combine(directory,"deployment.json"),JsonSerializer.Serialize(new{collection,collectionName=effective.Item3.Item2,modDirectory=mod.Key,modName,targetGamePath=target,resolveCode=resolved.Item1,resolvedPath=resolved.Item2,resolvedSha256=resolved.Item2 is{} path && File.Exists(path)?SklbContainer.Parse(File.ReadAllBytes(path)).Sha256:null,settings=settings.Item2,matchingLoadedResources=matching,timestamp=DateTimeOffset.UtcNow},new JsonSerializerOptions{WriteIndented=true,IncludeFields=true}));
         pluginInterface.GetIpcSubscriber<int,string,string,int>("Penumbra.OpenMainWindow.V5").InvokeFunc(1,mod.Key,"");
         if(enable && (resolved.Item1!=0 || resolved.Item2 is null || !File.Exists(resolved.Item2)))throw new InvalidOperationException("EST test enabled, but its SKLB path did not resolve; see deployment.json.");
-        status=$"��ԭŮ EST �����Ѻ˶ԣ����� {effective.Item3.Item2}��t9100 ·������ code={resolved.Item1}��";
+        status=$"中原女 EST 测试已核对：集合 {effective.Item3.Item2}，t9100 路径解析 code={resolved.Item1}。";
         WriteStatus(enable?"est-enabled":"est-verified",status);
     }
 
@@ -303,7 +303,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if(a.SequenceEqual(b) || !a.SequenceEqual(c))throw new InvalidDataException("Effective EST metadata did not change and restore as expected.");
         var directory=Path.Combine(Path.GetDirectoryName(outputRoot)!,"female-est-test");
         File.WriteAllText(Path.Combine(directory,"metadata-effect-test.json"),JsonSerializer.Serialize(new{state="passed",onlyToggledMod=mod,activeBytes=a.Length,withoutTestBytes=b.Length,restoredBytes=c.Length,metadataChangedWhenDisabled=true,metadataExactlyRestored=true,finalModEnabled=true,timestamp=DateTimeOffset.UtcNow},new JsonSerializerOptions{WriteIndented=true}));
-        status="��ЧԪ����ʵ��ͨ�����رղ��� Mod ʱ�����仯���ָ����ú����ֽ�һ�£����� Mod �������á�";
+        status="有效元数据实测通过：关闭测试 Mod 时发生变化，恢复启用后逐字节一致；测试 Mod 保持启用。";
         WriteStatus("est-effect-passed",status);
     }
 
@@ -336,11 +336,11 @@ public sealed partial class Plugin : IDalamudPlugin
                 var actualConnections=partial.GetProperty("attachmentConnections").EnumerateArray().ToArray();
                 var connectionMatches=desired.All(a=>actualConnections.Any(c=>c.GetProperty("referenceBoneIndex").GetInt32()==a.ReferenceBoneIndex && c.GetProperty("boneName").GetString()==a.BoneName));
                 if(expected.Length>0 && matched==expected.Length && currentFile && connectionMatches)runtimeVerified=true;
-                var kind=actor.GetProperty("isLocalPlayer").GetBoolean()?"����":"GPose/Ԥ��";
-                rows.Add($"{kind}��{names.Count} ������������ {matched}/{expected.Length}��{(currentFile?"�Ѽ��ص�ǰ�汾":"��δȷ�ϵ�ǰ�汾")}��"+
-                    (desired.Count==0?"":$"�ҵ�������{(connectionMatches?"ȫ���뵱ǰ�������һ�£��˶�����������":"���ڲ�һ�£���������Ǽܼ�����")}��"));
+                var kind=actor.GetProperty("isLocalPlayer").GetBoolean()?"本体":"GPose/预览";
+                rows.Add($"{kind}：{names.Count} 根骨骼，新增 {matched}/{expected.Length}；{(currentFile?"已加载当前版本":"尚未确认当前版本")}。"+
+                    (desired.Count==0?"":$"挂点索引：{(connectionMatches?"全部与当前人体骨名一致；运动需另行验收":"存在不一致，请检查人体骨架兼容性")}。"));
             }
-        runtimeReport=rows.Count==0?"δ���ַ�װ���ӹǼܡ���ȷ�ϲ���װ������ѡ��ɫ��":string.Join(" ",rows);
+        runtimeReport=rows.Count==0?"未发现服装附加骨架。请确认测试装备和所选角色。":string.Join(" ",rows);
         WriteStatus("runtime-bones-captured",runtimeReport);
     }
 
@@ -350,7 +350,7 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             CheckCandidate();
             preview.Start(selectedCollection,document!.SourceGamePath,lastCandidate!,previewPriority);
-            status="�Ǽ���ʱ�滻��Ӧ�á�������ѡ�����д�������װ�����ػ棻����������δ�󶨷�װȨ�ء�";
+            status="骨架临时替换已应用。请在所选集合中穿戴测试装备并重绘；新增骨骼尚未绑定服装权重。";
         }));
     }
 
@@ -365,7 +365,7 @@ public sealed partial class Plugin : IDalamudPlugin
         var anchorIds=candidate.AnchorBindings.Select(a=>a.BoneId).ToHashSet();
         var report=ModelBoneCheck.Check(model,modelPath,candidate.Bones.Select(b=>b.Name).Concat(reference.Bones.Select(b=>b.Name)),candidate.Bones.Where(b=>!originalIds.Contains(b.Id) && !anchorIds.Contains(b.Id)).Select(b=>b.Name));
         File.WriteAllText(Path.Combine(Path.GetDirectoryName(lastCandidate!)!,"model-check.json"),JsonSerializer.Serialize(report,new JsonSerializerOptions{WriteIndented=true}));
-        modelReport=$"ԭ��ģ�ͣ�{report.MeshCount} �� mesh��{report.BoneNameCount} ��������δ�������� {report.MissingNames.Length}������������ {report.ReferencedNewNames.Length}������Ȩ��δ��֤��";
+        modelReport=$"原版模型：{report.MeshCount} 个 mesh，{report.BoneNameCount} 个骨名；未解析骨骼 {report.MissingNames.Length}；引用新增骨 {report.ReferencedNewNames.Length}。顶点权重未验证。";
         WriteStatus(report.BoneTablesValid?"model-bones-passed":"model-bones-failed",modelReport);
     }
 
@@ -376,7 +376,7 @@ public sealed partial class Plugin : IDalamudPlugin
         busy = true;
         operationFailed=false;
         var selected = source.Trim();
-        status = "���ڴ���˽�йǼܸ�����";
+        status = "正在处理私有骨架副本…";
         _ = framework.RunOnFrameworkThread(() =>
         {
             try { if(preview.Active)StopWorkflowPreview();RoundTrip(selected); if(launchBlender)OpenBlender(); }
@@ -391,10 +391,10 @@ public sealed partial class Plugin : IDalamudPlugin
         var local=Path.IsPathRooted(selected);
         var gamePath=local?localTargetGamePath.Trim():selected;
         if(!Regex.IsMatch(gamePath,@"^chara/human/c\d{4}/skeleton/top/t\d{4}/skl_c\d{4}t\d{4}\.sklb$"))
-            throw new InvalidDataException("��������ֻ���� top ��װ���ӹǼܣ�����д��Ӧ�� chara/human/.../skeleton/top/...sklb ��Ϸ·����");
+            throw new InvalidDataException("本开发版只处理 top 服装附加骨架；请填写对应的 chara/human/.../skeleton/top/...sklb 游戏路径。");
         var bytes = local
             ? File.ReadAllBytes(selected)
-            : data.GetFile<Lumina.Data.FileResource>(selected)?.Data ?? throw new FileNotFoundException("δ�ҵ��Ǽ���Դ", selected);
+            : data.GetFile<Lumina.Data.FileResource>(selected)?.Data ?? throw new FileNotFoundException("未找到骨架资源", selected);
         var container = SklbContainer.Parse(bytes);
         if(container.VersionLow==0x3031)log.Information("Reading a recognized original multi-attachment equipment skeleton.");
         var directory = Path.Combine(outputRoot, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-ffff"));
@@ -441,18 +441,18 @@ public sealed partial class Plugin : IDalamudPlugin
         {
             File.WriteAllText(Path.Combine(directory,"anchor-rig.json"),JsonSerializer.Serialize(new{available=false,reason=SafeDetail(e.Message)}));
         }
-        File.WriteAllText(Path.Combine(directory,"source-receipt.json"),JsonSerializer.Serialize(new{kind=local?"local-file-unverified":"original-sqpack",selected=local?"<���عǼ�>":selected,gamePath,sourceSha256=container.Sha256,penumbraResolutionUsed=false},new JsonSerializerOptions{WriteIndented=true}));
+        File.WriteAllText(Path.Combine(directory,"source-receipt.json"),JsonSerializer.Serialize(new{kind=local?"local-file-unverified":"original-sqpack",selected=local?"<本地骨架>":selected,gamePath,sourceSha256=container.Sha256,penumbraResolutionUsed=false},new JsonSerializerOptions{WriteIndented=true}));
         exported.Save(Path.Combine(directory,"snapshot.json"));
         document=exported;
         sourceMode=local?2:gamePath==DefaultSkeletonPath?0:1;
         activeProjectDirectory=directory;
         lastCandidate=null;
         candidateDocument=null;
-        modelReport="��δ����װģ�͡�";
+        modelReport="尚未检查服装模型。";
         ConfigureProjectReturn();
         workflowStep=1;
         runtimeVerified=false;
-        status = $"��Ŀ�Ѵ�����{document.Bones.Count} ��ԭ�ǡ��������� Blender �����ӹ�����";
+        status = $"项目已创建：{document.Bones.Count} 根原骨。接下来在 Blender 中添加骨骼。";
         SaveWorkflow();
         WriteStatus("roundtrip-passed", status);
     }
@@ -460,7 +460,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private SkeletonDocument ExportOriginalReference(string selected,string directory)
     {
         var race=Regex.Match(selected,@"^chara/human/c(\d{4})/skeleton/top/");
-        if(!race.Success) throw new InvalidDataException("�޷�ȷ��װ��������Ǽ����塣");
+        if(!race.Success) throw new InvalidDataException("无法确定装备的人体骨架种族。");
         var code=race.Groups[1].Value;
         var gamePath=$"chara/human/c{code}/skeleton/base/b0001/skl_c{code}b0001.sklb";
         var bytes=data.GetFile<Lumina.Data.FileResource>(gamePath)?.Data ?? throw new FileNotFoundException("Original base skeleton not found",gamePath);
@@ -481,7 +481,7 @@ public sealed partial class Plugin : IDalamudPlugin
         if (busy || disposed || activeProjectDirectory is null) return;
         busy=true;
         operationFailed=false;
-        status="���ڼ�� Blender �޸Ĳ����ɹǼܡ�";
+        status="正在检查 Blender 修改并生成骨架…";
         lastCandidate=null;
         candidateDocument=null;
         runtimeVerified=false;
@@ -502,16 +502,16 @@ public sealed partial class Plugin : IDalamudPlugin
         var logicalOrdered=SkeletonValidator.OrderedForAppend(candidate,baseline);
         var original=SklbContainer.Parse(File.ReadAllBytes(Path.Combine(project,"original.sklb")));
         if (original.Sha256!=baseline.SourceSha256) throw new InvalidDataException("Original SKLB changed since export.");
-        if(candidate.AttachmentTargetBone is not null)throw new InvalidDataException("�ɰ����׻��ҵ�ķ����ļ���ͣ�ã������°������Ǽ����ֶ�ָ���¹���������");
+        if(candidate.AttachmentTargetBone is not null)throw new InvalidDataException("旧版整套换挂点的返回文件已停用，请在新版完整骨架中手动指定新骨链父级。");
         EquipmentAnchorPlan? anchors=null;
         if(candidate.AnchorSchemaVersion==1)
         {
             // Resolve against fresh original SqPack data, never a character Mod or editable Blender metadata.
             var race=Regex.Match(baseline.SourceGamePath,@"^chara/human/c(\d{4})/skeleton/top/");
-            if(!race.Success)throw new InvalidDataException("�޷�ȷ���ҽ����������Ǽܡ�");
+            if(!race.Success)throw new InvalidDataException("无法确定挂接所需的人体骨架。");
             var code=race.Groups[1].Value;
             var referencePath=$"chara/human/c{code}/skeleton/base/b0001/skl_c{code}b0001.sklb";
-            var referenceBytes=data.GetFile<Lumina.Data.FileResource>(referencePath)?.Data??throw new FileNotFoundException("δ�ҵ�ԭ������Ǽܡ�");
+            var referenceBytes=data.GetFile<Lumina.Data.FileResource>(referencePath)?.Data??throw new FileNotFoundException("未找到原版人体骨架。");
             var referenceContainer=SklbContainer.Parse(referenceBytes);
             var referenceHkx=Path.Combine(project,"attachment-reference.hkx");
             File.WriteAllBytes(referenceHkx,referenceContainer.Payload.ToArray());
@@ -520,10 +520,10 @@ public sealed partial class Plugin : IDalamudPlugin
             // A game update or altered local reference must not silently move the Blender bind pose.
             var savedReference=SkeletonDocument.Load(Path.Combine(project,"reference-snapshot.json"));
             if(savedReference.SourceSha256!=reference.SourceSha256 || savedReference.SourceGamePath!=referencePath)
-                throw new InvalidDataException("ԭ������Ǽ�����Ŀ�ο���һ�£������´�����Ŀ��");
+                throw new InvalidDataException("原版人体骨架与项目参考不一致，请重新创建项目。");
             anchors=EquipmentAnchorPlan.Create(original,baseline,candidate,reference,referenceContainer);
         }
-        else if(candidate.AnchorBindings.Count>0)throw new InvalidDataException("�ҵ㽻���汾����֧�֡�");
+        else if(candidate.AnchorBindings.Count>0)throw new InvalidDataException("挂点交换版本不受支持。");
         var ordered=anchors?.NativeBones??logicalOrdered;
         var directory=Path.Combine(project,"appended-"+DateTime.UtcNow.ToString("HHmmss-ffff"));
         Directory.CreateDirectory(directory);
@@ -578,9 +578,9 @@ public sealed partial class Plugin : IDalamudPlugin
         if(baseline.SourceGamePath==DefaultSkeletonPath)
         {
             try { CheckModel(); }
-            catch(Exception e) {modelReport="�Ǽ������ɣ�ģ�͹�������δ��飺"+e.Message;log.Warning("Optional model check failed: {Detail}",SafeDetail(e.ToString()));}
+            catch(Exception e) {modelReport="骨架已生成，模型骨骼表暂未检查："+e.Message;log.Warning("Optional model check failed: {Detail}",SafeDetail(e.ToString()));}
         }
-        status=$"���ͨ�������� {baseline.Bones.Count} ��ԭ�ǣ����� {ordered.Count-baseline.Bones.Count-candidate.AnchorBindings.Count} ����ʹ�� {candidate.AnchorBindings.Count} ������ҵ㡣ԭ�з�װ�ҽӱ�����ʵ���涯����Ϸ��֤��";
+        status=$"检查通过：保留 {baseline.Bones.Count} 根原骨，新增 {ordered.Count-baseline.Bones.Count-candidate.AnchorBindings.Count} 根，使用 {candidate.AnchorBindings.Count} 个人体挂点。原有服装挂接保留；实际随动待游戏验证。";
         SaveWorkflow();
         WriteStatus("append-passed",status);
     }

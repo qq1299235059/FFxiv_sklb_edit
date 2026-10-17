@@ -17,7 +17,7 @@ internal static class ModelBoneCheck
         // the older Lumina decoder, which misreads variable-sized V6 bone tables.
         var assembly=AppDomain.CurrentDomain.GetAssemblies().Where(a=>a.GetName().Name=="Penumbra.GameData")
             .OrderByDescending(a=>a.GetName().Version).FirstOrDefault(a=>a.GetType("Penumbra.GameData.Files.MdlFile") is not null)
-            ?? throw new InvalidOperationException("�������� Penumbra���ټ��ģ�͹�������");
+            ?? throw new InvalidOperationException("请先启用 Penumbra，再检查模型骨骼表。");
         var type=assembly.GetType("Penumbra.GameData.Files.MdlFile",throwOnError:true)!;
         var model=Activator.CreateInstance(type,[bytes]) ?? throw new InvalidDataException("Could not read the original MDL.");
         if(!Field<bool>(model,"Valid")) throw new InvalidDataException("Penumbra rejected the original MDL.");

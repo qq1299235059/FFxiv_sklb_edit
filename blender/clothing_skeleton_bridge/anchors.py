@@ -34,12 +34,12 @@ def add_reference(armature, objects):
     descriptor = info(armature)
     reference = next((obj for obj in objects if obj.type == "ARMATURE"), None)
     if reference is None or not descriptor or not descriptor.get("available"):
-        raise ValueError("��Ŀȱ�������ҵ����ϣ������°���Ϸ������´�����Ŀ")
+        raise ValueError("项目缺少完整挂点资料，请在新版游戏插件重新创建项目")
     source = [(bone.name, bone.parent.name if bone.parent else None, bone.matrix_local.copy(), bone.length)
               for bone in reference.data.bones]
     targets = {entry["boneName"]: entry for entry in descriptor["targets"]}
     if set(targets) != {row[0] for row in source}:
-        raise ValueError("�����ҵ�����������ο���һ�£������´�����Ŀ")
+        raise ValueError("完整挂点资料与人体参考不一致，请重新创建项目")
     bpy.ops.object.select_all(action="DESELECT")
     armature.select_set(True)
     bpy.context.view_layer.objects.active = armature
@@ -69,7 +69,7 @@ def add_reference(armature, objects):
         bone["cswOriginalIndex"] = -2
         bone["cswImportMatrix"] = [value for row in bone.matrix_local for value in row]
         bone.use_deform = False
-    collection = armature.data.collections.new("����ҵ㣨δʹ��ʱ�Զ����ԣ�")
+    collection = armature.data.collections.new("人体挂点（未使用时自动忽略）")
     for name in created:
         collection.assign(armature.data.bones[name])
     for obj in objects:
@@ -86,16 +86,16 @@ def export_rig(armature, proxies):
     existing = aliases(armature)
     retained = helper_used - set(existing)
     if descriptor and len(descriptor["existingAnchors"]) + len(retained) > descriptor["maxConnections"]:
-        raise ValueError(f"��ǰģ��������� {descriptor['maxConnections']-len(descriptor['existingAnchors'])} ����ͬ����ҵ㣻ͬһ�ҵ�ɹҶ�����")
+        raise ValueError(f"当前模板最多新增 {descriptor['maxConnections']-len(descriptor['existingAnchors'])} 个不同人体挂点；同一挂点可挂多条链")
     original = {bone["id"] for bone in json.loads(armature["csw_baseline"])["bones"]}
     for bone in armature.data.bones:
         if bone.name in helper_used:
             imported = bone.get("cswImportMatrix")
             current = [value for row in bone.matrix_local for value in row]
             if bone.name != bone["cswAnchorBone"] or imported is None or any(abs(a-b)>1e-5 for a, b in zip(imported, current)):
-                raise ValueError("��ʹ�õ�����ҵ㱻�������ƶ�����ָ��ҵ㣬ֻ�༭��������")
+                raise ValueError("已使用的人体挂点被改名或移动，请恢复挂点，只编辑新增骨骼")
         elif not is_anchor(bone) and bone.get("cswBoneId") not in original and bone.parent is None:
-            raise ValueError("��������û�и�������ѡ�������ǣ���ѡĿ��ҵ㣬Ctrl+P �� ����ƫ��")
+            raise ValueError("新增骨链没有父级，请选新链根骨，再选目标挂点，Ctrl+P → 保持偏移")
     duplicate = None
     duplicate_data = None
     clone_proxies = []

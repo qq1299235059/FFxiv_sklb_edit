@@ -1,7 +1,7 @@
 {
   "researchDate": "2026-10-08",
   "targetRegion": "CN",
-  "purpose": "��װ�滻 Mod ���Զ��帽�ӹ���",
+  "purpose": "服装替换 Mod 的自定义附加骨骼",
   "runtimeValidated": false,
   "sources": [
     {
@@ -9,7 +9,7 @@
       "repository": "https://github.com/0ceal0t/Dalamud-VFXEditor",
       "verifiedCommit": "05f6eb0cce19a6a91ae275bce609299d573914b3",
       "repositoryLicense": "MIT",
-      "uses": ["SKLB ��װ", "Havok �����뱣��", "glTF �Ǽ�����", "mapper �� layers"],
+      "uses": ["SKLB 包装", "Havok 载入与保存", "glTF 骨架往返", "mapper 与 layers"],
       "entryPoints": [
         "VFXEditor/Formats/SklbFormat/SklbFile.cs",
         "VFXEditor/Formats/SklbFormat/Data/SklbNewData.cs",
@@ -21,83 +21,83 @@
         "VFXEditor/Utils/Gltf/GltfSkeleton.cs"
       ],
       "guide": "https://github.com/0ceal0t/Dalamud-VFXEditor/wiki/Using-Blender-to-Edit-Skeletons-and-Animations",
-      "caveat": "Դ�뼼���ο���δ��֤�䵱ǰ����ԭ����"
+      "caveat": "源码技术参考，未验证其当前国服原生绑定"
     },
     {
       "id": "xande",
       "repository": "https://github.com/xivdev/Xande",
       "verifiedCommit": "172423c87135f696be7a5f63672c594c84778286",
       "repositoryLicense": "AGPL-3.0",
-      "uses": ["HKX �� XML ˫��ת��˵��", "RawHeader ��������", "Havok Framework �߳�Ҫ��"],
+      "uses": ["HKX 与 XML 双向转换说明", "RawHeader 保留方法", "Havok Framework 线程要求"],
       "entryPoints": ["Xande/Files/SklbFile.cs", "Xande/Havok/HavokConverter.cs", "Xande/Havok/HavokXml.cs"],
-      "caveat": "�Ͼ�ʵ�֣��װ治ֱ����Ϊ��������"
+      "caveat": "较旧实现，首版不直接作为整库依赖"
     },
     {
       "id": "meddle",
       "repository": "https://github.com/PassiveModding/Meddle",
       "verifiedCommit": "383bdf82d2e35741039f1474c2c9f475f2cec9f9",
       "repositoryLicense": "AGPL-3.0",
-      "uses": ["ģ����Ǽܵ����ο�"],
-      "caveat": "�Ѻ�ʵ�ֿ����ύ�� README�������װ����������δ�����ȫ��ת��Դ�����"
+      "uses": ["模型与骨架导出参考"],
+      "caveat": "已核实仓库与提交及 README；不是首版必须依赖，未完成其全部转换源码审计"
     },
     {
       "id": "penumbra-api",
       "repository": "https://github.com/Ottermandias/Penumbra.Api",
       "verifiedCommit": "45749c89e80ab9f7a7a0557b9c87770980048051",
       "declaredPackageLicense": "MIT",
-      "uses": ["·������", "��ʱ Mod", "��ʱ����", "��Դ��", "�ػ�", "metadata ������Լ"],
+      "uses": ["路径解析", "临时 Mod", "临时集合", "资源树", "重绘", "metadata 输入契约"],
       "entryPoints": ["Api/Temporary.cs", "Api/Resolve.cs", "Api/Meta.cs", "Api/Editing.cs", "Api/ResourceTree.cs", "IpcSubscribers/Temporary.cs", "IpcSubscribers/Resolve.cs", "IpcSubscribers/Redraw.cs", "Penumbra.Api.csproj"],
-      "caveat": "������װ�汾������ƥ�䣻���� main ����ҳ������ܲ�ͬ�����ð��汾�� M0 ȷ��"
+      "caveat": "国服安装版本需重新匹配；公开 main 和网页缓存可能不同，采用包版本由 M0 确定"
     },
     {
       "id": "penumbra-est",
       "url": "https://github.com/xivdev/Penumbra/wiki/Advanced-Editing",
-      "uses": ["EST ���ò�λ", "�ļ��ض������ļ���������", "װ���͹Ǽ�����"]
+      "uses": ["EST 适用部位", "文件重定向与文件交换区别", "装备和骨架配置"]
     },
     {
       "id": "penumbra-model-io",
       "url": "https://github.com/xivdev/Penumbra/wiki/Model-IO",
-      "uses": ["MDL �� glTF ����", "ģ�� mesh �����������ο�", "Blender ģ�͵�������"],
-      "caveat": "�ĵ�������Ҫ���� Blender 4.0��ʵ�ʹ��߰汾�͹��� MDL ��ʽ����֤"
+      "uses": ["MDL 与 glTF 交换", "模型 mesh 骨骼表容量参考", "Blender 模型导出设置"],
+      "caveat": "文档设置主要基于 Blender 4.0，实际工具版本和国服 MDL 格式需验证"
     },
     {
       "id": "ffxiv-client-structs",
       "repository": "https://github.com/aers/FFXIVClientStructs",
       "verifiedCommit": null,
       "url": "https://github.com/aers/FFXIVClientStructs/blob/main/FFXIVClientStructs/Havok/Animation/Rig/hkaSkeleton.cs",
-      "uses": ["�Ǽ��ֶ��븨����������"],
-      "caveat": "����ʵ�������壬��֤�������û���ǰ���� build"
+      "uses": ["骨架字段与辅助索引引用"],
+      "caveat": "仅核实公开定义，不证明符合用户当前国服 build"
     },
     {
       "id": "gltf-specification",
       "url": "https://github.com/KhronosGroup/glTF/blob/main/specification/2.0/Specification.adoc",
       "schemaUrl": "https://github.com/KhronosGroup/glTF/blob/main/specification/2.0/schema/skin.schema.json",
-      "uses": ["skin.joints", "inverseBindMatrices", "�����ڵ����Ƥ��ϵ"]
+      "uses": ["skin.joints", "inverseBindMatrices", "骨骼节点和蒙皮关系"]
     },
     {
       "id": "blender-armature",
       "url": "https://developer.blender.org/docs/features/animation/armatures/",
-      "uses": ["Armature �ռ���Ǿ���Լ��"]
+      "uses": ["Armature 空间与骨矩阵约定"]
     },
     {
       "id": "blender-lts",
       "url": "https://www.blender.org/releases/4-5/",
-      "uses": ["��ʼ Blender �汾��ѡ"],
-      "caveat": "��δȷ���û���װ�汾��Ҳδ��֤����Ŀ���������"
+      "uses": ["初始 Blender 版本候选"],
+      "caveat": "尚未确定用户安装版本，也未验证本项目插件兼容性"
     },
     {
       "id": "dalamud-sdk",
       "url": "https://dalamud.dev/plugin-development/how-tos/v12-SDK-migration/",
       "template": "https://github.com/goatcorp/SamplePlugin/blob/master/SamplePlugin/SamplePlugin.csproj",
       "gettingStarted": "https://dalamud.dev/faq/getting-started/",
-      "uses": ["����ģ��� SDK ·��"],
-      "caveat": "ģ��汾�����ڹ�����ǰ���ð汾"
+      "uses": ["工程模板和 SDK 路线"],
+      "caveat": "模板版本不等于国服当前可用版本"
     },
     {
       "id": "sklb-research-document",
       "url": "https://docs.google.com/document/d/13TBozIOwKHCMm1SMIhVUQtzaCg9bU18gDATHmXtqO1U/edit",
-      "uses": ["�����ʽ�о����"],
-      "caveat": "�� VFXEditor �������Ӷ�λ�����ʲ��ȶ���δ����δ��ʵ�����γɸ�ʽ����"
+      "uses": ["补充格式研究入口"],
+      "caveat": "由 VFXEditor 上游链接定位，访问不稳定；未依靠未核实段落形成格式结论"
     }
   ]
 }

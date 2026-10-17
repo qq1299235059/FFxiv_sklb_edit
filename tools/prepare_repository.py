@@ -13,7 +13,7 @@ RAW = f"https://raw.githubusercontent.com/{REPOSITORY}/main"
 HOST_PATH = re.compile(r"(?i)(?:(?<![a-z0-9])[a-z]:[\\/]|\\\\[a-z0-9]|/(?:Users|home)/|Documents[\\/]+ChatGPT)")
 EXPECTED = {
     "ClothingSkeleton.dll", "ClothingSkeleton.Core.dll", "ClothingSkeleton.json",
-    "ClothingSkeleton.deps.json", "ʹ��ָ��.md", "SHA256SUMS.txt",
+    "ClothingSkeleton.deps.json", "使用指南.md", "SHA256SUMS.txt",
     "BlenderBridge/blender_open_project.py",
     "BlenderBridge/clothing_skeleton_bridge/__init__.py",
     "BlenderBridge/clothing_skeleton_bridge/anchors.py",
@@ -72,7 +72,7 @@ def main():
             (ROOT / "tools/blender_open_project.py", "BlenderBridge/blender_open_project.py"),
             (bridge / "__init__.py", "BlenderBridge/clothing_skeleton_bridge/__init__.py"),
             (bridge / "anchors.py", "BlenderBridge/clothing_skeleton_bridge/anchors.py"),
-            (ROOT / "docs/�ַ�ʹ��ָ��.md", "ʹ��ָ��.md"),
+            (ROOT / "docs/分发使用指南.md", "使用指南.md"),
         ]:
             if source.read_bytes() != zipped.read(name):
                 raise RuntimeError(f"Packaged file differs from source: {name}")
@@ -115,7 +115,7 @@ def main():
         if existing.is_file() and existing.read_bytes() != data:
             raise RuntimeError("Versioned downloads are immutable; bump the plugin version before replacing published files")
     files = {archive.name: package, blender_name: buffer.getvalue(),
-             "ʹ��ָ��.md": (ROOT / "docs/�ַ�ʹ��ָ��.md").read_bytes(), "verification.json": json_bytes(report)}
+             "使用指南.md": (ROOT / "docs/分发使用指南.md").read_bytes(), "verification.json": json_bytes(report)}
     files["SHA256SUMS.txt"] = "".join(f"{digest(data)}  {name}\n" for name, data in files.items()).encode()
     for name, blob in files.items():
         if not name.endswith(".zip"):
@@ -134,7 +134,7 @@ def main():
             updated = previous[0]["LastUpdate"]
     entry.update(DownloadLinkInstall=link, DownloadLinkUpdate=link, LastUpdate=updated)
     repo_path.write_bytes(json_bytes([entry]))
-    (ROOT / "outputs/delivery/�ַ����.json").write_bytes(json_bytes(report))
+    (ROOT / "outputs/delivery/分发检查.json").write_bytes(json_bytes(report))
     print(f"Prepared downloads/{version}: audited game ZIP, Blender ZIP, guide, checksums and repo.json.")
 
 
