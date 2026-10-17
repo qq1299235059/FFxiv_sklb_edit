@@ -1,0 +1,18 @@
+{
+  "Author": "ClothingSkeleton contributors",
+  "Name": "��װ�Ǽܹ���̨ (Clothing Skeleton Workshop)",
+  "InternalName": "ClothingSkeleton",
+  "AssemblyVersion": "0.4.0.0",
+  "RepoUrl": "https://github.com/qq1299235059/FFxiv_sklb_edit",
+  "Description": "Ϊ��װ�滻 Mod ׷���Զ����������������ҵ㡢Blender �༭��SKLB �ص�У���� Penumbra ���á����� /csw �򿪣��״����� Blender ��ַ����������Ԥ���棬����������֤�Ŀͻ��˰汾��",
+  "Changelog": "0.4����������ҵ����װԭ����ʾ��ͬһ�Ǽܣ��ֶ�ָ���¹�����������������δ�ùҵ㣬֧������֤��ʽ�Ķ�ҵ����ӡ���ɫ�涯���װȨ���Դ����ա�",
+  "Punchline": "Ϊ��װ Mod �����Զ������",
+  "ApplicableVersion": "2026.10.06.0000.0000",
+  "DalamudApiLevel": 15,
+  "LoadRequiredState": 0,
+  "LoadSync": false,
+  "CanUnloadAsync": false,
+  "Tags": ["modding", "skeleton", "blender"],
+  "IsHide": false,
+  "IsTestingExclusive": false
+}

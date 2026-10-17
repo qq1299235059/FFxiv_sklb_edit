@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Version>0.4.0</Version>
+    <AssemblyName>ClothingSkeleton</AssemblyName>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ClothingSkeleton.Core/ClothingSkeleton.Core.csproj" />
+    <Reference Include="Dalamud"><HintPath>$(DalamudLibPath)/Dalamud.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="FFXIVClientStructs"><HintPath>$(DalamudLibPath)/FFXIVClientStructs.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Dalamud.Bindings.ImGui"><HintPath>$(DalamudLibPath)/Dalamud.Bindings.ImGui.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Lumina"><HintPath>$(DalamudLibPath)/Lumina.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="InteropGenerator.Runtime"><HintPath>$(DalamudLibPath)/InteropGenerator.Runtime.dll</HintPath><Private>false</Private></Reference>
+    <None Include="../../tools/blender_open_project.py" Link="BlenderBridge/blender_open_project.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../blender/clothing_skeleton_bridge/__init__.py" Link="BlenderBridge/clothing_skeleton_bridge/__init__.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../blender/clothing_skeleton_bridge/anchors.py" Link="BlenderBridge/clothing_skeleton_bridge/anchors.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../docs/�ַ�ʹ��ָ��.md" Link="ʹ��ָ��.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="ClothingSkeleton.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
+
