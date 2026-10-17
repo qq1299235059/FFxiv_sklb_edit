@@ -1,0 +1,11 @@
+.tools/
+work/
+outputs/
+**/bin/
+**/obj/
+.vs/
+*.user
+config/local.props
+samples/private/
+**/__pycache__/
+
