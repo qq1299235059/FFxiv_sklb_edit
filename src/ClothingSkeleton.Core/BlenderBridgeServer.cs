@@ -13,7 +13,7 @@ public sealed class BlenderBridgeServer : IDisposable
     private readonly CancellationTokenSource stop=new();
     private readonly SemaphoreSlim clients=new(4);
     private readonly object gate=new();
-    private readonly string returnFile;
+    private string returnFile;
     private readonly string version;
     private readonly string token=Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
     private readonly Guid instance=Guid.NewGuid();
@@ -30,7 +30,7 @@ public sealed class BlenderBridgeServer : IDisposable
     private long acceptedReturns;
     public int Port {get;}
 
-    public BlenderBridgeServer(string returnFile,int port=BridgeExchange.DefaultPort,string version="0.6.1")
+    public BlenderBridgeServer(string returnFile,int port=BridgeExchange.DefaultPort,string version="0.7.0")
     {
         if(port is <0 or >65535)throw new ArgumentOutOfRangeException(nameof(port));
         this.returnFile=returnFile;this.version=version;
@@ -38,18 +38,19 @@ public sealed class BlenderBridgeServer : IDisposable
         _=Accept();
     }
 
-    public void Publish(BridgeProject value)
+    public void Publish(BridgeProject value,string? target=null)
     {
         var source=BridgeExchange.Baseline(value);
         lock(gate)
         {
+            if(target is not null)returnFile=Path.GetFullPath(target);
             project=value;baseline=source;acknowledged=null;lastRequest=null;lastReturnHash="";
             message="骨架已准备，等待 Blender 接收";
         }
     }
     public void PauseReturns(bool value){lock(gate)paused=value;}
     public object Status {get {lock(gate)return new{listening=!disposed,port=Port,connected=Connected,projectId=project?.ProjectId,transferId=project?.TransferId,receivedByBlender=project is not null && acknowledged==project.TransferId,acceptedReturns,message};}}
-    private bool Connected=>clientId is not null && DateTime.UtcNow-seen<TimeSpan.FromSeconds(10);
+    private bool Connected=>clientId is not null && DateTime.UtcNow-seen<TimeSpan.FromSeconds(30);
 
     private async Task Accept()
     {
@@ -73,7 +74,7 @@ public sealed class BlenderBridgeServer : IDisposable
         using(socket)
         using(var deadline=CancellationTokenSource.CreateLinkedTokenSource(stop.Token))
         {
-            deadline.CancelAfter(TimeSpan.FromSeconds(5));
+            deadline.CancelAfter(TimeSpan.FromSeconds(15));
             try
             {
                 var request=await Read(socket.GetStream(),deadline.Token);
@@ -123,7 +124,7 @@ public sealed class BlenderBridgeServer : IDisposable
     private (int,object) Handle(Request request)
     {
         if(request.Method=="GET" && request.Path=="/v1/health")return(200,new{protocol=BridgeExchange.Protocol,version,port=Port});
-        if(request.Method!="POST" || request.Headers.GetValueOrDefault("X-CSW-Protocol")!="1" || request.Headers.GetValueOrDefault("Content-Type","").Split(';')[0].Trim()!="application/json")throw new Problem(403,"请使用配套 Blender 插件连接。");
+        if(request.Method!="POST" || request.Headers.GetValueOrDefault("X-CSW-Protocol")!=BridgeExchange.Protocol.ToString() || request.Headers.GetValueOrDefault("Content-Type","").Split(';')[0].Trim()!="application/json")throw new Problem(403,"请使用配套 Blender 插件连接。");
         if(request.Path=="/v1/connect")
         {
             using var json=JsonDocument.Parse(request.Body);
@@ -161,7 +162,7 @@ public sealed class BlenderBridgeServer : IDisposable
                         if(lastReturnHash!=hash)throw Bad("重复的返回身份内容不一致。");
                         return(200,new{received=true,duplicate=true,requestId=packet.RequestId});
                     }
-                    var count=BridgeExchange.PublishReturn(returnFile,baseline,packet);
+                    var count=BridgeExchange.PublishReturn(returnFile,baseline,packet,project.ModId);
                     lastRequest=packet.RequestId;lastReturnHash=hash;acceptedReturns++;
                     message=$"已收到 Blender 返回的 {count} 个骨骼节点，请在游戏回导检查";
                     return(200,new{received=true,requestId=packet.RequestId,boneCount=count});

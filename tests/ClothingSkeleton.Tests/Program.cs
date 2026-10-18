@@ -216,4 +216,5 @@ Check(SklbLayerTable.Read(mountedLayer,4).Single().BoneIndices.SequenceEqual(new
 AnchorChecks.Run(Check,Reject,exchangeDir);
 CharacterSourceChecks.Run(Check,Reject);
 BridgeChecks.Run(Check,baseline,candidate,exchangeDir);
+ModChecks.Run(Check,Reject,baseline,candidate,sklb.OriginalBytes(),exchangeDir);
 Console.WriteLine($"{passed} checks passed.");

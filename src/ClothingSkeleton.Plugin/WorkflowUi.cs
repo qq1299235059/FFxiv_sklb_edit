@@ -38,7 +38,7 @@ public sealed partial class Plugin
     private bool CanUseCandidate => lastCandidate is not null && !HasNewReturn;
     private bool IsOdinProject => document?.SourceGamePath==DefaultSkeletonPath;
 
-    private sealed record WorkflowSettings(string? ProjectDirectory=null,string? CandidatePath=null,string BlenderExecutable="",string ValidatedReturnHash="",string? SelectedSource=null,string? TargetGamePath=null,int SourceMode=0,bool GuideCompleted=false,bool EnableDevelopmentCommands=false,int Version=4,string CharacterSelectionKind="self",int BridgePort=BridgeExchange.DefaultPort);
+    private sealed record WorkflowSettings(string? ProjectDirectory=null,string? CandidatePath=null,string BlenderExecutable="",string ValidatedReturnHash="",string? SelectedSource=null,string? TargetGamePath=null,int SourceMode=0,bool GuideCompleted=false,bool EnableDevelopmentCommands=false,int Version=5,string CharacterSelectionKind="self",int BridgePort=BridgeExchange.DefaultPort,Guid? ActiveModId=null);
 
     private void InitializeWorkflow()
     {
@@ -65,7 +65,7 @@ public sealed partial class Plugin
                     }
                     blenderExecutable=saved.BlenderExecutable??"";
                     lastValidatedReturnHash=saved.ValidatedReturnHash??"";
-                    guideCompleted=saved.Version>=4 && saved.GuideCompleted;
+                    guideCompleted=saved.Version>=5 && saved.GuideCompleted;
                     bridgePort=saved.BridgePort is >0 and <=65535?saved.BridgePort:BridgeExchange.DefaultPort;
                     developmentMode=saved.EnableDevelopmentCommands;
                     characterSelectionKind=saved.CharacterSelectionKind is "target"?"target":"self";
@@ -78,7 +78,7 @@ public sealed partial class Plugin
             source=document.SourceGamePath;
             localTargetGamePath=source;
             sourceMode=1;
-            if(restored?.SelectedSource is{} selected) {sourceMode=Math.Clamp(restored.SourceMode,0,2);if(restored.Version<3 && sourceMode==0)sourceMode=1;source=sourceMode==2?storage.Resolve(selected)??"":selected;localTargetGamePath=restored.TargetGamePath??document.SourceGamePath;}
+            if(restored?.SelectedSource is{} selected) {sourceMode=Math.Clamp(restored.SourceMode,0,3);if(restored.Version<3 && sourceMode==0)sourceMode=1;source=sourceMode==2?storage.Resolve(selected)??"":selected;localTargetGamePath=restored.TargetGamePath??document.SourceGamePath;}
             if(lastCandidate is not null)
             {
                 try { CheckCandidate(); }
@@ -87,6 +87,7 @@ public sealed partial class Plugin
             workflowStep=lastCandidate is null?1:2;
             status=lastCandidate is null?"已恢复上次项目，可以继续在 Blender 编辑。":"已恢复上次检查通过的骨架，可以继续编辑或预览。";
         }
+        RestoreMod(restored?.ActiveModId);
         ConfigureProjectReturn(false);
         showGuide=!guideCompleted;
         StartBridge();
@@ -95,7 +96,7 @@ public sealed partial class Plugin
 
     private void ConfigureProjectReturn(bool resetValidation=true)
     {
-        returnedPath=storage.ReturnFile;
+        returnedPath=activeMod?.ReturnFile??storage.ReturnFile;
         Directory.CreateDirectory(Path.GetDirectoryName(returnedPath)!);
         if(resetValidation)lastValidatedReturnHash="";
         observedReturn="";
@@ -113,7 +114,7 @@ public sealed partial class Plugin
         {
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
             var selectedSource=sourceMode==2?storage.Relative(activeProjectDirectory is null?null:Path.Combine(activeProjectDirectory,"original.sklb")):source;
-            var state=new WorkflowSettings(storage.Relative(activeProjectDirectory),storage.Relative(lastCandidate),"",lastValidatedReturnHash,selectedSource,localTargetGamePath,sourceMode,guideCompleted,developmentMode,CharacterSelectionKind:characterSelectionKind,BridgePort:bridgePort);
+            var state=new WorkflowSettings(storage.Relative(activeProjectDirectory),storage.Relative(lastCandidate),"",lastValidatedReturnHash,selectedSource,localTargetGamePath,sourceMode,guideCompleted,developmentMode,CharacterSelectionKind:characterSelectionKind,BridgePort:bridgePort,ActiveModId:activeMod?.Project.Id);
             File.WriteAllText(settingsPath+".tmp",JsonSerializer.Serialize(state,new JsonSerializerOptions{WriteIndented=true}));
             File.Move(settingsPath+".tmp",settingsPath,true);
             return true;
@@ -129,6 +130,7 @@ public sealed partial class Plugin
             TryUi(CheckWorkflowRuntime);
         }
         RefreshReturnedFile();
+        if(activeMod is not null && autoProcessMod && HasNewReturn && returnReady && returnedHash!=lastAttemptedModReturn)ScheduleModReturn();
     }
 
     private void RefreshReturnedFile()
@@ -153,6 +155,7 @@ public sealed partial class Plugin
             { returnFromOtherProject=true;returnCaption="固定返回目录中是其他项目的文件。本项目完成编辑后点击“返回游戏”即可更新。";return; }
             if(manifest.RootElement.GetProperty("gltfSha256").GetString()!=returnedHash)
             { returnCaption="文件正在写入或已被修改，请从 Blender 重新返回。";return; }
+            if(activeMod is not null)returnedHash=BundleHash(returnedPath);
             returnReady=true;
             returnCaption=HasNewReturn?"已收到 Blender 修改，可以回导检查。":"这份 Blender 修改已经检查通过。";
         }
@@ -164,7 +167,8 @@ public sealed partial class Plugin
     {
         if(showGuide) {DrawOnboarding();return;}
         if(ImGui.SmallButton("使用指引与 Blender 设置"))ShowOnboarding();
-        ImGui.TextColored(Accent,"为服装添加骨骼");
+        DrawModManager();
+        ImGui.TextColored(Accent,"服装与骨架 Mod 工作台");
         ImGui.TextWrapped("创建项目，在 Blender 编辑，再回到这里检查和试用。");
         if(document is not null)
             ImGui.TextUnformatted($"当前项目：{(IsOdinProject?"中原女 · 奥丁神铠":document.Name)}  |  原骨 {document.Bones.Count}  ·  新增 {(candidateDocument?.Bones.Count??document.Bones.Count)-document.Bones.Count-(candidateDocument?.AnchorBindings.Count??0)}");
@@ -210,8 +214,9 @@ public sealed partial class Plugin
     private void DrawPrepareStep()
     {
         DrawCharacterSelection();
+        DrawModExportOptions();
         ImGui.TextUnformatted("选择回导到哪套服装骨架");
-        string[] sources=["所选角色当前上衣（原版关联）","指定游戏服装骨架","本地服装骨架文件"];
+        string[] sources=["所选角色当前上衣（原版关联）","指定游戏服装骨架","本地服装骨架文件","不追加骨骼（仅服装模型）"];
         if(ImGui.BeginCombo("服装骨架来源",sources[sourceMode]))
         {
             for(var i=0;i<sources.Length;i++)if(ImGui.Selectable(sources[i],sourceMode==i))
@@ -223,10 +228,12 @@ public sealed partial class Plugin
                     if(characterSelection is{} chosen)modelPath=$"chara/equipment/e{chosen.Source.EquippedTopSetId:D4}/model/c{chosen.Source.RaceSexId:D4}e{chosen.Source.EquippedTopSetId:D4}_top.mdl";
                 }
                 else if(i==2 && !Path.IsPathRooted(source))source="";
+                else if(i==3)source=characterSelection?.Source.GamePath??"";
             }
             ImGui.EndCombo();
         }
         if(sourceMode==0)ImGui.TextWrapped(characterSelection?.TopGamePath is{} top?$"原版上衣骨架：{Path.GetFileName(top)}":"当前上衣没有可直接使用的原版附加骨架，可改选游戏路径或本地文件。");
+        if(sourceMode==3)ImGui.TextWrapped("使用原版人物骨架进行服装绑定参考，不写回人物 SKLB；新增骨骼需改选装备附加骨架模板。");
         if(sourceMode==1)ImGui.InputText("游戏骨架路径",ref source,1024);
         if(sourceMode==2)
         {
@@ -242,7 +249,7 @@ public sealed partial class Plugin
         }
         ImGui.TextWrapped("Blender 人物骨架按上方所选场景角色导出；服装骨架只作为追加与回导目标。当前支持上衣附加骨架（top）。");
         ImGui.Spacing();
-        ImGui.BeginDisabled(characterSelection is null || string.IsNullOrWhiteSpace(source) || sourceMode==2 && !File.Exists(source));
+        ImGui.BeginDisabled(characterSelection is null || sourceMode!=3 && string.IsNullOrWhiteSpace(source) || sourceMode==2 && !File.Exists(source));
         if(PrimaryButton("创建并发送到 Blender"))ScheduleRoundTrip(true);
         if(ImGui.Button("只创建项目"))ScheduleRoundTrip();
         ImGui.EndDisabled();
@@ -273,6 +280,7 @@ public sealed partial class Plugin
 
     private void DrawReturnStep()
     {
+        if(activeMod is not null){DrawModReturnStep();return;}
         if(HasNewReturn || lastCandidate is null)
         {
             ImGui.TextWrapped(returnCaption);
@@ -354,9 +362,9 @@ public sealed partial class Plugin
         blenderBridge?.Dispose();blenderBridge=null;bridgeError="";
         try
         {
-            blenderBridge=new(storage.ReturnFile,bridgePort);
+            blenderBridge=new(returnedPath,bridgePort);
             if(activeProjectDirectory is not null)
-                try {blenderBridge.Publish(BridgeExchange.ReadProject(activeProjectDirectory));}
+                try {blenderBridge.Publish(BridgeExchange.ReadProject(activeProjectDirectory),returnedPath);}
                 catch(Exception e) when(e is IOException or JsonException or InvalidOperationException or ArgumentException)
                 {log.Warning("Saved project cannot be sent: {Detail}",SafeDetail(e.Message));}
         }
@@ -378,7 +386,7 @@ public sealed partial class Plugin
         if(activeProjectDirectory is null)throw new InvalidOperationException("请先创建骨架项目。");
         if(blenderBridge is null)StartBridge();
         if(blenderBridge is null)throw new InvalidOperationException(bridgeError);
-        blenderBridge.Publish(BridgeExchange.ReadProject(activeProjectDirectory));
+        blenderBridge.Publish(BridgeExchange.ReadProject(activeProjectDirectory),returnedPath);
         workflowStep=1;
         status="骨架已发送到本地连接。请在已打开的 Blender 中启用配套插件；接收后可直接在当前工程编辑。";
         SaveWorkflow();

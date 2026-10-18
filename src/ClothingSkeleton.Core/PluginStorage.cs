@@ -5,6 +5,7 @@ public sealed class PluginStorage
 {
     public PluginStorage(string directory) => Root=Path.GetFullPath(directory);
     public string Root { get; }
+    public string Mods=>Path.Combine(Root,"Mods");
     public string Projects=>Path.Combine(Root,"Projects");
     public string ReturnFile=>Path.Combine(Root,"BlenderReturn","edited.gltf");
     public string Settings=>Path.Combine(Root,"workshop-settings.json");

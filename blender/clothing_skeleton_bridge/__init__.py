@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Clothing Skeleton Bridge",
     "author": "ClothingSkeleton contributors",
-    "version": (0, 6, 1),
+    "version": (0, 7, 0),
     "blender": (4, 5, 0),
     "location": "3D View > Sidebar > 服装骨架",
     "description": "Import protected FFXIV clothing skeletons and export appended bones",
@@ -17,10 +17,10 @@ import tempfile
 import uuid
 
 import bpy
-from bpy.props import StringProperty, IntProperty
+from bpy.props import StringProperty, IntProperty, EnumProperty, BoolProperty, PointerProperty
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix, Quaternion
-from . import anchors, connection
+from . import anchors, connection, assets
 
 def safe_error(error):
     return re.sub(r"(?i)(?:[a-z]:[\\/]|/(?:Users|home)/)[^\r\n\"<>]+", "<本地路径>", str(error))
@@ -51,6 +51,7 @@ def _return_file_for_source(filepath):
 
 def import_project(filepath):
     before = set(bpy.data.objects)
+    before_collections = set(bpy.data.collections)
     try:
         return _import_project(filepath)
     except Exception:
@@ -58,6 +59,8 @@ def import_project(filepath):
             bpy.ops.object.mode_set(mode="OBJECT")
         for obj in set(bpy.data.objects) - before:
             bpy.data.objects.remove(obj, do_unlink=True)
+        for collection in set(bpy.data.collections) - before_collections:
+            bpy.data.collections.remove(collection)
         raise
 
 
@@ -109,7 +112,7 @@ def _import_project(filepath):
     # Body bones are authoring helpers in the same editable rig. The compiler
     # retains only used anchors and remaps the equipment file on return.
     reference_path = filepath.with_name("reference.gltf")
-    if reference_path.is_file():
+    if reference_path.is_file() and descriptor.get("allowNewBones", True):
         before_reference = set(bpy.data.objects)
         bpy.ops.import_scene.gltf(filepath=str(reference_path), bone_heuristic="BLENDER", guess_original_bind_pose=False)
         reference_objects = set(bpy.data.objects) - before_reference
@@ -130,12 +133,15 @@ def _import_project(filepath):
                 obj.hide_set(True)
             obj.select_set(False)
             obj.hide_select = True
+    if not descriptor.get("allowNewBones", True):
+        anchors.capture_body_reference(armature, baseline)
     anchors.sync_collections(armature)
     armature.name = "服装骨架_编辑此对象"
     armature.show_in_front = True
     bpy.ops.object.select_all(action="DESELECT")
     armature.select_set(True)
     bpy.context.view_layer.objects.active = armature
+    assets.import_models(armature, filepath.parent)
     return armature
 
 
@@ -250,7 +256,7 @@ def _export_project(armature, filepath):
                 raise ValueError(f"原骨父级发生变化，请恢复：{bone.name}")
             imported = bone.get("cswImportMatrix")
             current = [value for row in bone.matrix_local for value in row]
-            if imported is None or any(abs(a-b) > 1e-5 for a,b in zip(imported,current)):
+            if imported is None or any(abs(a-b) > (1e-4 if not (anchors.info(armature) or {}).get("allowNewBones",True) and i not in {3,7,11} else 1e-5) for i,(a,b) in enumerate(zip(imported,current))):
                 raise ValueError(f"原骨静止姿态发生变化，请撤销对原骨的编辑：{bone.name}")
     missing = set(expected) - set(identities)
     if missing:
@@ -316,10 +322,10 @@ def _export_project(armature, filepath):
 
 def current_armature(context):
     obj = context.object
-    if obj and obj.type == "ARMATURE" and "csw_baseline" in obj:
+    if obj and obj.type == "ARMATURE" and "csw_baseline" in obj and not obj.get("csw_aux_part"):
         return obj
     active_id = context.scene.get("csw_active_project_id")
-    candidates = [obj for obj in context.scene.objects if obj.type == "ARMATURE" and "csw_baseline" in obj]
+    candidates = [obj for obj in context.scene.objects if obj.type == "ARMATURE" and "csw_baseline" in obj and not obj.get("csw_aux_part")]
     if active_id:
         candidates = [obj for obj in candidates if json.loads(obj["csw_baseline"])["projectId"] == active_id]
     return candidates[0] if len(candidates) == 1 else None
@@ -369,9 +375,15 @@ class CSW_OT_return(bpy.types.Operator):
             armature = current_armature(context)
             if not armature:
                 raise ValueError("请先导入服装骨架项目")
-            target = export_project(armature)
+            full = bool(armature.get("csw_mod_id")) and armature.csw_export_mode == "FULL"
+            target = return_path(armature);target.parent.mkdir(parents=True, exist_ok=True)
+            if bpy.context.object and bpy.context.object.mode != "OBJECT":
+                bpy.ops.object.mode_set(mode="OBJECT")
+            items = assets.export_garments(armature, target.parent) if full else []
+            with assets.merged_skeleton(armature) as merged:
+                target = export_project(merged)
             if armature.get("csw_network_revision"):
-                connection.bridge.enqueue_return(armature, target)
+                connection.bridge.enqueue_return(armature, target, items)
                 self.report({"INFO"}, "正在发送，面板显示成功后切回游戏检查")
             else:
                 self.report({"INFO"}, "已写入固定返回位置，请切回游戏检查")
@@ -402,6 +414,20 @@ class CSW_PT_panel(bpy.types.Panel):
             self.layout.label(text="先在游戏创建并发送骨架")
             self.layout.operator("csw.import_project", text="手动打开项目…")
             return
+        primary = armature
+        if primary.get("csw_mod_id"):
+            self.layout.label(text="工作 Mod：" + primary["csw_mod_name"])
+            self.layout.prop(primary, "csw_export_mode", text="发送内容")
+            self.layout.prop(primary, "csw_garment_target", text="网格归属部件")
+            self.layout.operator("csw.mark_garment", text="将所选网格加入服装")
+            box = self.layout.box();box.label(text="发送的模型部件（各自独立骨架）")
+            for rig in assets.parts(primary):
+                box.prop(rig, "csw_include_part", text=rig.get("csw_part_label", "服装"))
+            active = context.object
+            if active and active.type == "MESH":
+                active = next((m.object for m in active.modifiers if m.type == "ARMATURE" and m.object), None)
+            if active and active in assets.parts(primary):
+                armature = active
         baseline = json.loads(armature["csw_baseline"])
         helpers = [bone for bone in anchors.editable_bones(armature) if anchors.is_anchor(bone)]
         self.layout.label(text=f"原骨 {len(baseline['bones'])} · 新增 {len(anchors.authored(armature))}")
@@ -423,6 +449,10 @@ class CSW_PT_panel(bpy.types.Panel):
         self.layout.label(text="新增骨骼自动归入“服装骨骼”集合")
         self.layout.operator("csw.arrange_custom", text="整理新增服装骨骼", icon="OUTLINER_COLLECTION")
         state = anchors.check_status(armature)
+        if primary.get("csw_mod_id"):
+            failures = assets.check(primary)
+            if failures:
+                state = dict(state, ok=False, errors=failures)
         box = self.layout.box()
         box.alert = not state["ok"]
         box.label(text="状态检查通过" if state["ok"] else f"状态检查：{len(state['errors'])} 项错误", icon="CHECKMARK" if state["ok"] else "ERROR")
@@ -435,7 +465,7 @@ class CSW_PT_panel(bpy.types.Panel):
         row = self.layout.row()
         row.scale_y = 1.6
         row.enabled = state["ok"]
-        row.operator("csw.return_to_game", icon="EXPORT")
+        row.operator("csw.return_to_game", text="发送服装和骨架" if primary.get("csw_mod_id") and primary.csw_export_mode == "FULL" else "仅发送骨骼", icon="EXPORT")
         self.layout.label(text="通过本机连接返回，成功后切回游戏检查")
         self.layout.label(text="人体挂点可直接选作新链父级")
         advanced = self.layout.box()
@@ -455,8 +485,26 @@ class CSW_OT_arrange_custom(bpy.types.Operator):
             self.report({"ERROR"}, "请先选择服装骨架")
             return {"CANCELLED"}
         try:
-            count = anchors.arrange_custom(armature)
+            count = sum(anchors.arrange_custom(rig) for rig in assets.parts(armature)) if armature.get("csw_mod_id") else anchors.arrange_custom(armature)
             self.report({"INFO"}, f"已整理 {count} 根新增服装骨骼，父级和位置保持")
+            return {"FINISHED"}
+        except Exception as error:
+            self.report({"ERROR"}, safe_error(error))
+            return {"CANCELLED"}
+
+
+class CSW_OT_mark_garment(bpy.types.Operator):
+    bl_idname = "csw.mark_garment"
+    bl_label = "将所选网格加入服装"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        try:
+            primary = current_armature(context)
+            if not primary or not primary.get("csw_mod_id"):
+                raise ValueError("请先从游戏发送一个 Mod 项目")
+            count = assets.mark_selected(primary)
+            self.report({"INFO"}, f"已标记 {count} 个服装网格，请确认权重、UV 和材质槽")
             return {"FINISHED"}
         except Exception as error:
             self.report({"ERROR"}, safe_error(error))
@@ -502,12 +550,15 @@ class CSW_OT_disconnect(bpy.types.Operator):
 
 
 def connection_tick():
-    editing = [obj for obj in bpy.context.objects_in_mode_unique_data if obj.type == "ARMATURE" and "csw_baseline" in obj]
+    editing = [obj for obj in bpy.context.objects_in_mode_unique_data if obj.type == "ARMATURE" and "csw_baseline" in obj and not obj.get("csw_aux_part")]
     if not editing:
         armature = current_armature(bpy.context)
         editing = [armature] if armature else []
     for armature in editing:
         anchors.sync_collections(armature)
+    primary = current_armature(bpy.context)
+    if primary and primary.get("csw_mod_id"):
+        assets.sync(primary)
     interval = connection.bridge.tick(bpy, import_project)
     for screen in bpy.data.screens:
         for area in screen.areas:
@@ -516,10 +567,13 @@ def connection_tick():
     return interval
 
 
-CLASSES = (CSW_Preferences, CSW_OT_connect, CSW_OT_disconnect, CSW_OT_import, CSW_OT_return, CSW_OT_arrange_custom, CSW_PT_panel)
+CLASSES = (CSW_Preferences, CSW_OT_connect, CSW_OT_disconnect, CSW_OT_import, CSW_OT_return, CSW_OT_arrange_custom, CSW_OT_mark_garment, CSW_PT_panel)
 
 
 def register():
+    bpy.types.Object.csw_garment_target = PointerProperty(type=bpy.types.Object, name="网格归属部件", poll=lambda owner, obj: obj.type == "ARMATURE" and obj in assets.parts(owner) if owner.get("csw_mod_id") else False)
+    bpy.types.Object.csw_export_mode = EnumProperty(name="发送内容", items=(("SKELETON", "仅骨骼", "仅发送骨架，保留已有服装输出"), ("FULL", "完整服装＋骨骼", "逐装备发送服装网格、权重、材质信息和骨架")), default="SKELETON")
+    bpy.types.Object.csw_include_part = BoolProperty(name="发送此服装部件", default=True)
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     start_connection()
@@ -532,3 +586,6 @@ def unregister():
     connection.bridge.stop()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
+    del bpy.types.Object.csw_garment_target
+    del bpy.types.Object.csw_export_mode
+    del bpy.types.Object.csw_include_part

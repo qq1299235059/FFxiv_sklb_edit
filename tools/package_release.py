@@ -13,7 +13,7 @@ destination = root / "outputs/release"
 destination.mkdir(parents=True, exist_ok=True)
 files = ["ClothingSkeleton.dll", "ClothingSkeleton.Core.dll", "ClothingSkeleton.json",
          "ClothingSkeleton.deps.json", "使用指南.md", "BlenderBridge/clothing_skeleton_bridge/connection.py",
-         "BlenderBridge/clothing_skeleton_bridge/__init__.py", "BlenderBridge/clothing_skeleton_bridge/anchors.py"]
+         "BlenderBridge/clothing_skeleton_bridge/__init__.py", "BlenderBridge/clothing_skeleton_bridge/anchors.py", "BlenderBridge/clothing_skeleton_bridge/assets.py"]
 private = re.compile(r"(?i)(?:(?<![a-z0-9])[a-z]:[\\/]|\\\\[a-z0-9]|/(?:Users|home)/|WorkspaceRoot|Documents[\\/]+ChatGPT)")
 entries = {}
 for name in files:

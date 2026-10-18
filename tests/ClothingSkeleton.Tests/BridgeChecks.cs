@@ -15,7 +15,7 @@ internal static class BridgeChecks
         {
             using var request=new HttpRequestMessage(HttpMethod.Post,path){Content=new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(value,BridgeExchange.Json))};
             request.Content.Headers.ContentType=new("application/json");
-            request.Headers.Add("X-CSW-Protocol","1");
+            request.Headers.Add("X-CSW-Protocol",BridgeExchange.Protocol.ToString());
             if(auth){request.Headers.Add("X-CSW-Client",id.ToString());request.Headers.Add("X-CSW-Token",overrideToken??token);}
             if(origin is not null)request.Headers.Add("Origin",origin);
             using var response=client.Send(request);
@@ -23,14 +23,14 @@ internal static class BridgeChecks
             return(response.StatusCode,json.RootElement.Clone());
         }
         using(var health=JsonDocument.Parse(client.GetStringAsync("/v1/health").GetAwaiter().GetResult()))
-            check(server.Port>0 && health.RootElement.GetProperty("protocol").GetInt32()==1 && !health.RootElement.TryGetProperty("token",out _),"loopback bridge health exposes protocol without credentials or disk paths");
+            check(server.Port>0 && health.RootElement.GetProperty("protocol").GetInt32()==BridgeExchange.Protocol && !health.RootElement.TryGetProperty("token",out _),"loopback bridge health exposes protocol without credentials or disk paths");
         check(Post("/v1/poll",new{},false).Item1==HttpStatusCode.Unauthorized,"unconnected clients cannot read a project");
-        var connected=Post("/v1/connect",new{protocol=1,clientId=id},false);
+        var connected=Post("/v1/connect",new{protocol=BridgeExchange.Protocol,clientId=id},false);
         token=connected.Item2.GetProperty("token").GetString()!;
         check(connected.Item1==HttpStatusCode.OK && token.Length==64,"Blender handshake establishes an ephemeral connection");
         check(Post("/v1/poll",new{},overrideToken:new string('0',64)).Item1==HttpStatusCode.Unauthorized,"a wrong connection token cannot poll the skeleton");
         check(Post("/v1/poll",new{},origin:"https://example.invalid").Item1==HttpStatusCode.Forbidden,"browser-origin requests cannot access the local bridge");
-        check(Post("/v1/connect",new{protocol=1,clientId=Guid.NewGuid()},false).Item1==HttpStatusCode.Conflict,"another Blender cannot silently take over an active connection");
+        check(Post("/v1/connect",new{protocol=BridgeExchange.Protocol,clientId=Guid.NewGuid()},false).Item1==HttpStatusCode.Conflict,"another Blender cannot silently take over an active connection");
         var baselineBytes=JsonSerializer.SerializeToUtf8Bytes(baseline,SkeletonDocument.JsonOptions);
         var project=new BridgeProject(baseline.ProjectId,new string('a',64),Guid.NewGuid(),new(){["skeleton.ffxiv.json"]=Convert.ToBase64String(baselineBytes)});
         server.Publish(project);
@@ -38,6 +38,7 @@ internal static class BridgeChecks
         check(polled.Item2.GetProperty("project").GetProperty("projectId").GetGuid()==baseline.ProjectId,"published skeleton is delivered through the connected client");
         check(Post("/v1/ack",new{transferId=project.TransferId}).Item1==HttpStatusCode.OK && Post("/v1/poll",new{}).Item2.GetProperty("project").ValueKind==JsonValueKind.Null,"acknowledged transfers do not import the same skeleton on every poll");
         var fixture=Path.Combine(directory,"wire-fixture","edited.gltf");Directory.CreateDirectory(Path.GetDirectoryName(fixture)!);GltfExchange.Export(candidate,fixture);
+        File.WriteAllText(Path.Combine(Path.GetDirectoryName(fixture)!,"parts.json"),JsonSerializer.Serialize(new GarmentReturn(baseline.ProjectId,null,false,[]),BridgeExchange.Json));
         var files=BridgeExchange.ReturnNames.ToDictionary(n=>n,n=>Convert.ToBase64String(File.ReadAllBytes(Path.Combine(Path.GetDirectoryName(fixture)!,n))));
         var returned=new BridgeReturn(baseline.ProjectId,project.Revision,Guid.NewGuid(),files);
         check(Post("/v1/return",returned with{ProjectId=Guid.NewGuid()}).Item1==HttpStatusCode.Conflict && !File.Exists(output),"another project's return cannot overwrite the fixed return file");

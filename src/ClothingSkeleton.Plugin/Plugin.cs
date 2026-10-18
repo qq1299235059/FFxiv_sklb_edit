@@ -96,7 +96,21 @@ public sealed partial class Plugin : IDalamudPlugin
             File.Move(commandFile,claimed,true);
             using var command=JsonDocument.Parse(File.ReadAllText(claimed));
             var action=command.RootElement.GetProperty("action").GetString();
-            if(action=="append") ScheduleAppend();
+            if(action=="mod-export-test")
+            {
+                sourceMode=3;ApplyCharacterSelection("self");
+                includeBody=true;includeEquipment=true;includeWeapons=true;exportClothing=true;
+                newModName="模型往返验证";CreateMod(true);
+                if(command.RootElement.TryGetProperty("template",out var template)){sourceMode=1;source=template.GetString()!;}
+                ScheduleModExport(false);
+            }
+            else if(action=="mod-test-status")
+            {
+                var path=Path.Combine(outputRoot,"mod-test-status.json");
+                File.WriteAllText(path,JsonSerializer.Serialize(new{mod=activeMod?.Project,source=storage.Relative(activeProjectDirectory),returned=storage.Relative(returnedPath),build=lastModBuild,detail=modBuildCaption},BridgeExchange.Json));
+                WriteStatus("mod-test-status", "独立 Mod 验证状态已保存。");
+            }
+            else if(action=="append") ScheduleAppend();
             else if(action=="send-blender") OpenBlender();
             else if(action=="select-character") {ApplyCharacterSelection(command.RootElement.GetProperty("selection").GetString()!);}
             else if(action=="inspect") { sourceMode=1;source=command.RootElement.GetProperty("path").GetString()!; ScheduleRoundTrip(); }
@@ -374,6 +388,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void ScheduleRoundTrip(bool launchBlender=false)
     {
+        if(activeMod is not null){ScheduleModExport(launchBlender);return;}
         if (busy || disposed) return;
         busy = true;
         operationFailed=false;
@@ -398,15 +413,16 @@ public sealed partial class Plugin : IDalamudPlugin
         if (disposed) return;
         var local=Path.IsPathRooted(selected);
         var gamePath=local?localTargetGamePath.Trim():selected;
-        selectedCharacter.CheckEquipmentPath(gamePath);
-        if(!Regex.IsMatch(gamePath,@"^chara/human/c\d{4}/skeleton/top/t\d{4}/skl_c\d{4}t\d{4}\.sklb$"))
+        var modelOnly=activeMod is not null && gamePath==selectedCharacter.GamePath;
+        if(!modelOnly)selectedCharacter.CheckEquipmentPath(gamePath);
+        if(!modelOnly && !Regex.IsMatch(gamePath,@"^chara/human/c\d{4}/skeleton/top/t\d{4}/skl_c\d{4}t\d{4}\.sklb$"))
             throw new InvalidDataException("本开发版只处理 top 服装附加骨架；请填写对应的 chara/human/.../skeleton/top/...sklb 游戏路径。");
         var bytes = local
             ? File.ReadAllBytes(selected)
             : data.GetFile<Lumina.Data.FileResource>(selected)?.Data ?? throw new FileNotFoundException("未找到骨架资源", selected);
         var container = SklbContainer.Parse(bytes);
         if(container.VersionLow==0x3031)log.Information("Reading a recognized original multi-attachment equipment skeleton.");
-        var directory = Path.Combine(outputRoot, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-ffff"));
+        var directory = activeMod is null?Path.Combine(outputRoot,DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-ffff")):Path.Combine(activeMod.Work,"p",Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(directory);
         File.WriteAllBytes(Path.Combine(directory, "original.sklb"), bytes);
         var input = Path.Combine(directory, "input.hkx");
@@ -438,12 +454,13 @@ public sealed partial class Plugin : IDalamudPlugin
             if(!XNode.DeepEquals(XDocument.Load(Path.Combine(directory,"original.xml")).Root,XDocument.Load(verifiedXml).Root))
                 throw new InvalidDataException("Round-trip changed serialized Havok object data.");
         }
-        File.WriteAllBytes(Path.Combine(directory, "candidate.sklb"), candidateBytes);
+        if(!modelOnly)File.WriteAllBytes(Path.Combine(directory, "candidate.sklb"), candidateBytes);
         GltfExchange.Export(exported,Path.Combine(directory,"skeleton.gltf"));
         var reference=ExportOriginalReference(selectedCharacter,directory);
         try
         {
-            var attachment=EquipmentAnchorPlan.Describe(container,exported,reference) with{CharacterSource=selectedCharacter};
+            var attachment=modelOnly?new AnchorRigInfo(exported.ProjectId,gamePath,exported.SourceSha256,reference.SourceGamePath,reference.SourceSha256,[],[],CharacterSource:selectedCharacter,AllowNewBones:false)
+                :EquipmentAnchorPlan.Describe(container,exported,reference) with{CharacterSource=selectedCharacter};
             File.WriteAllText(Path.Combine(directory,"anchor-rig.json"),JsonSerializer.Serialize(attachment,SkeletonDocument.JsonOptions));
         }
         catch(InvalidDataException e)
@@ -456,13 +473,14 @@ public sealed partial class Plugin : IDalamudPlugin
         document=exported;
         if(local)sourceMode=2;
         activeProjectDirectory=directory;
+        activeMod?.BindSource(directory);
         lastCandidate=null;
         candidateDocument=null;
         modelReport="尚未检查服装模型。";
         ConfigureProjectReturn();
         workflowStep=1;
         runtimeVerified=false;
-        status = $"已导出所选角色的原版人物骨架（{reference.Bones.Count} 根），并载入 {document.Bones.Count} 根服装原骨。接下来在 Blender 中添加骨链并指定父级。";
+        status = modelOnly?$"已导出所选角色的 {reference.Bones.Count} 根原版人物骨骼用于服装绑定；本模式不生成 SKLB。":$"已导出所选角色的原版人物骨架（{reference.Bones.Count} 根），并载入 {document.Bones.Count} 根服装原骨。接下来在 Blender 中添加骨链并指定父级。";
         SaveWorkflow();
         WriteStatus("roundtrip-passed", status);
     }
@@ -486,6 +504,7 @@ public sealed partial class Plugin : IDalamudPlugin
 
     private void ScheduleAppend()
     {
+        if(activeMod is not null){ScheduleModReturn();return;}
         if (busy || disposed || activeProjectDirectory is null) return;
         busy=true;
         operationFailed=false;
@@ -507,6 +526,12 @@ public sealed partial class Plugin : IDalamudPlugin
     {
         var baseline=SkeletonDocument.Load(Path.Combine(project,"snapshot.json"));
         var candidate=GltfExchange.Import(returned,baseline);
+        if(ModWorkspace.AddedBoneCount(baseline,candidate)==0)
+        {
+            candidateDocument=candidate;lastCandidate=null;status="无新增服装骨骼，已跳过 SKLB 生成。";
+            if(activeMod is null){lastValidatedReturnHash=Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(returned)));SaveWorkflow();WriteStatus("no-new-bones",status);}
+            return;
+        }
         var logicalOrdered=SkeletonValidator.OrderedForAppend(candidate,baseline);
         var original=SklbContainer.Parse(File.ReadAllBytes(Path.Combine(project,"original.sklb")));
         if (original.Sha256!=baseline.SourceSha256) throw new InvalidDataException("Original SKLB changed since export.");
@@ -602,7 +627,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void WriteStatus(string state, string detail)
     {
         var path=Path.Combine(outputRoot,"status.json");
-        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new { state, detail=SafeDetail(detail), timestamp = DateTimeOffset.UtcNow, pluginVersion = "0.6.1", gameVersion = "2026.10.06.0000.0000" }, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new { state, detail=SafeDetail(detail), timestamp = DateTimeOffset.UtcNow, pluginVersion = "0.7.0", gameVersion = "2026.10.06.0000.0000" }, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(path+".tmp",path,true);
     }
 

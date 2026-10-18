@@ -49,7 +49,7 @@ assert (first/"BlenderReturn/edited.gltf").stat().st_mtime_ns==stamp
 # Same deterministic ZIP as prepare_repository.py, installed through Blender's installer.
 addon=root/f"outputs/release/ClothingSkeleton-Blender-{version}.zip"
 with zipfile.ZipFile(addon,"w",zipfile.ZIP_DEFLATED) as z:
-    for source,name in [(root/"blender/clothing_skeleton_bridge"/n,n) for n in ("__init__.py","anchors.py","connection.py")]+[(root/"blender/README.md","README.md")]:
+    for source,name in [(root/"blender/clothing_skeleton_bridge"/n,n) for n in ("__init__.py","anchors.py","connection.py","assets.py")]+[(root/"blender/README.md","README.md")]:
         entry=zipfile.ZipInfo(f"clothing_skeleton_bridge/{name}",date_time=(2020,1,1,0,0,0));entry.compress_type=zipfile.ZIP_DEFLATED
         z.writestr(entry,source.read_bytes())
 standalone=run(second,"standalone",addon)

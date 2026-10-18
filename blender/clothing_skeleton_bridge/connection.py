@@ -3,17 +3,18 @@ import base64
 import hashlib
 import json
 from pathlib import Path
+import re
 import queue
 import struct
 import threading
 import uuid
 from urllib import request, error
 
-PROTOCOL = 1
+PROTOCOL = 2
 DEFAULT_PORT = 43867
-PROJECT_NAMES = ("skeleton.gltf", "skeleton.ffxiv.json", "skeleton.complete.json", "reference.gltf", "reference.ffxiv.json", "reference.complete.json", "anchor-rig.json", "skeleton.bin", "reference.bin")
+PROJECT_NAMES = ("skeleton.gltf", "skeleton.ffxiv.json", "skeleton.complete.json", "reference.gltf", "reference.ffxiv.json", "reference.complete.json", "anchor-rig.json", "skeleton.bin", "reference.bin", "mod-project.json", "models.json")
 RETURN_NAMES = ("edited.gltf", "edited.ffxiv.json", "edited.complete.json")
-MAX_BYTES = 48 * 1024 * 1024
+MAX_BYTES = 192 * 1024 * 1024
 
 
 class Connection:
@@ -67,7 +68,7 @@ class Connection:
             headers.update({"X-CSW-Client": self.client_id, "X-CSW-Token": self.token or ""})
         req = request.Request(f"http://127.0.0.1:{self.port}/v1/{path}", data=data, headers=headers)
         # Ignore system proxy settings: this connection must stay on loopback.
-        with request.build_opener(request.ProxyHandler({})).open(req, timeout=1.5) as response:
+        with request.build_opener(request.ProxyHandler({})).open(req, timeout=20) as response:
             payload = response.read(MAX_BYTES + 1)
             if len(payload) > MAX_BYTES:
                 raise ValueError("交换数据过大")
@@ -132,15 +133,20 @@ class Connection:
             self.connected = False
             self.token = None
 
-    def enqueue_return(self, armature, target):
+    def enqueue_return(self, armature, target, parts=None):
         if not self.connected:
             raise ValueError("尚未连接游戏，请先点击“连接游戏”")
         project_id = json.loads(armature["csw_baseline"])["projectId"]
         revision = armature.get("csw_network_revision")
         if not revision:
             raise ValueError("此骨架未通过连接接收，请在游戏发送当前项目")
-        packet = {"projectId": project_id, "revision": revision, "requestId": str(uuid.uuid4()),
-                  "files": {name: base64.b64encode((Path(target).parent / name).read_bytes()).decode("ascii") for name in RETURN_NAMES}}
+        parts = parts or []
+        mod_id = armature.get("csw_mod_id")
+        manifest = dict(projectId=project_id, modId=mod_id, fullClothing=bool(parts), parts=parts, schemaVersion=1)
+        (Path(target).parent / "parts.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+        names = list(RETURN_NAMES) + ["parts.json"] + [p["file"] for p in parts]
+        packet = {"projectId": project_id, "modId": mod_id, "revision": revision, "requestId": str(uuid.uuid4()),
+                  "files": {name: base64.b64encode((Path(target).parent / name).read_bytes()).decode("ascii") for name in names}}
         try:
             self.outgoing.put_nowait(("return", packet))
         except queue.Full:
@@ -164,7 +170,7 @@ class Connection:
             if len(revision) != 64 or any(c not in "0123456789abcdef" for c in revision):
                 raise ValueError("无效骨架版本")
             existing = [obj for obj in bpy.context.scene.objects if obj.type == "ARMATURE" and
-                        obj.get("csw_network_revision") == revision and "csw_baseline" in obj and
+                        obj.get("csw_network_revision") == revision and "csw_baseline" in obj and not obj.get("csw_aux_part") and
                         json.loads(obj["csw_baseline"])["projectId"] == project_id]
             if existing:
                 if "csw_body_reference" not in existing[0]:
@@ -174,17 +180,19 @@ class Connection:
                 self.message = "当前工程已有此骨架，已保留现有编辑"
             else:
                 files = project["files"]
-                if set(files) - set(PROJECT_NAMES) or set(PROJECT_NAMES[:7]) - set(files):
+                if any(name not in PROJECT_NAMES and not re.fullmatch(r"ref-[0-9a-f]{16}\.glb", name) for name in files) or set(PROJECT_NAMES[:7]) - set(files):
                     raise ValueError("骨架交换文件不完整")
                 directory = self.cache / hashlib.sha256((project_id + revision).encode()).hexdigest()[:24]
                 directory.mkdir(parents=True, exist_ok=True)
                 sha = hashlib.sha256()
                 decoded = {}
-                for name in PROJECT_NAMES:
+                total = 0
+                for name in list(PROJECT_NAMES) + sorted(n for n in files if n not in PROJECT_NAMES):
                     if name not in files:
                         continue
                     data = base64.b64decode(files[name], validate=True)
-                    if len(data) > 32 * 1024 * 1024:
+                    total += len(data)
+                    if total > 128 * 1024 * 1024:
                         raise ValueError("骨架文件过大")
                     sha.update(name.encode()); sha.update(struct.pack("<i", len(data))); sha.update(data)
                     decoded[name] = data
@@ -202,7 +210,23 @@ class Connection:
                     sidecar = json.loads(decoded[prefix + ".ffxiv.json"])
                     if complete["projectId"] != sidecar["projectId"] or (prefix == "skeleton" and sidecar["projectId"] != project_id) or complete["gltfSha256"] != hashlib.sha256(decoded[prefix + ".gltf"]).hexdigest():
                         raise ValueError("骨架交换身份不一致")
+                def check_uris(value):
+                    if isinstance(value, dict):
+                        for key, child in value.items():
+                            if key == "uri" and (not isinstance(child, str) or not child.startswith("data:")):
+                                raise ValueError("参考模型包含外部文件引用")
+                            check_uris(child)
+                    elif isinstance(value, list):
+                        for child in value:
+                            check_uris(child)
                 for name, data in decoded.items():
+                    if name.endswith(".glb"):
+                        if len(data) < 20 or data[:4] != b"glTF" or struct.unpack_from("<II", data, 4) != (2, len(data)):
+                            raise ValueError("参考模型不是完整 glTF 2.0 数据")
+                        length, kind = struct.unpack_from("<II", data, 12)
+                        if kind != 0x4e4f534a or length > len(data)-20:
+                            raise ValueError("参考模型数据损坏")
+                        check_uris(json.loads(data[20:20+length]))
                     (directory / name).write_bytes(data)
                 (directory / ".csw-network.json").write_text(json.dumps({"projectId": project_id, "revision": revision}), encoding="utf-8")
                 armature = import_project(directory / "skeleton.gltf")

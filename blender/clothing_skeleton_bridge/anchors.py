@@ -30,6 +30,11 @@ def authored(armature):
 
 
 
+def role_of(armature, bone, original):
+    body_only = not (info(armature) or {}).get("allowNewBones", True)
+    return "body" if is_anchor(bone) or body_only and bone.get("cswBoneId") in original else "equipment" if bone.get("cswBoneId") in original else "custom"
+
+
 COLLECTIONS = (("body", "人物骨骼"), ("equipment", "服装原骨"), ("custom", "服装骨骼"))
 
 
@@ -90,7 +95,7 @@ def sync_collections(armature):
         if not identity:
             bone["cswBoneId"] = identity = str(uuid.uuid4())
             bone["cswOriginalIndex"] = -1
-        role = "body" if is_anchor(bone) else "equipment" if identity in original else "custom"
+        role = role_of(armature, bone, original)
         if role == "custom":
             bone["cswAuthoredName"] = bone.name
         chosen = collections[role]
@@ -139,7 +144,7 @@ def check_status(armature):
     original_ids = {b["id"] for b in original}
     errors = []
     for bone in bones:
-        role = "body" if is_anchor(bone) else "equipment" if bone.get("cswBoneId") in original_ids else "custom"
+        role = role_of(armature, bone, original_ids)
         membership = list(bone.collections)
         if role == "custom" and bone.parent is None:
             errors.append(f"新增服装骨链没有父级：{bone.name}，请手动指定父级")
@@ -164,7 +169,7 @@ def check_status(armature):
             errors.append("人物原骨对照来源不一致，请重新创建项目")
     for expected in expected_body + original:
         bone = by_id.get(expected["id"])
-        label = "人物原骨" if expected["id"] not in original_ids else "服装原骨"
+        label = "人物原骨" if expected["id"] not in original_ids or bone is not None and role_of(armature,bone,original_ids)=="body" else "服装原骨"
         if bone is None:
             errors.append(f"{label}被删除：{expected['name']}")
             continue
@@ -173,14 +178,14 @@ def check_status(armature):
         parent_id = bone.parent.get("cswBoneId") if bone.parent else None
         if parent_id != expected["parentId"]:
             errors.append(f"{label}父级被改变：{expected['name']}，请恢复原人物/装备层级")
-        imported = expected.get("matrix") if label == "人物原骨" else bone.get("cswImportMatrix")
+        imported = expected.get("matrix", bone.get("cswImportMatrix")) if label == "人物原骨" else bone.get("cswImportMatrix")
         matrix = bone.matrix if armature.mode == "EDIT" else bone.matrix_local
         current = [value for row in matrix for value in row]
         # Blender reconstructs EditBone axes on mode changes (observed ~3e-5).
         # Keep strict positional checks while allowing that axis roundoff in body helpers.
         if imported is None or len(imported) != 16 or any(abs(a-b) > (1e-4 if label == "人物原骨" and i not in {3,7,11} else 1e-5) for i,(a,b) in enumerate(zip(imported,current))):
             errors.append(f"{label}静止姿态被改变：{expected['name']}")
-    return dict(ok=not errors, errors=errors, bodyBoneCount=len(expected_body), customBoneCount=len(authored(armature)))
+    return dict(ok=not errors, errors=errors, bodyBoneCount=len(expected_body)+sum(1 for b in bones if b.get("cswBoneId") in original_ids and role_of(armature,b,original_ids)=="body"), customBoneCount=len(authored(armature)))
 
 
 def arrange_custom(armature):

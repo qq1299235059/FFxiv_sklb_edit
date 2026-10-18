@@ -35,11 +35,11 @@ public sealed partial class Plugin
             else {StartBridge();SaveWorkflow();guideError=bridgeError;}
         }
         if(guideError.Length>0)ImGui.TextWrapped(guideError);
-        ImGui.TextUnformatted("3  发送骨架、编辑、返回");
-        ImGui.TextWrapped("读取自己或当前目标 → 选择服装骨架 → 创建并发送到 Blender → 手动指定新骨链父级 → Blender 点击“返回游戏” → 游戏回导检查。");
-        ImGui.TextWrapped("人物骨架来自所选角色对应的原版文件。完整人体挂点与服装原骨位于同一骨架；未用挂点在返回时自动忽略。服装权重、动画和物理需要另行制作。");
+        ImGui.TextUnformatted("3  按 Mod 制作与返回");
+        ImGui.TextWrapped("读取自己或当前目标 → 创建独立 Mod → 选择仅骨骼或完整服装及可选参考组 → 创建并发送到 Blender → 编辑对应部件 → 一键发送 → 游戏检查并更新当前 Mod。");
+        ImGui.TextWrapped("人物骨架来自所选角色对应的原版文件。完整人体挂点与服装原骨位于同一骨架；未用挂点在返回时自动忽略。每件装备使用独立集合与骨架。服装网格需正确绑定权重；动画和物理需要另行制作。");
         ImGui.TextWrapped("重复发送同一项目会保留已有编辑。新项目会新增骨架对象，不会清空 Blender 场景。请自行保存 .blend 工程。");
-        ImGui.TextWrapped("返回文件由游戏侧固定保存在插件目录 / BlenderReturn / edited.gltf。仅连接本机，不需要开放防火墙或局域网端口。");
+        ImGui.TextWrapped("新流程按 Mod 固定保存返回和默认输出，不需填写路径。没有新增服装骨骼时只输出模型，不生成 SKLB；旧版项目继续使用插件内固定返回目录。仅连接本机，不需要开放防火墙或局域网端口。");
         if(PrimaryButton("进入工作台")) {guideCompleted=true;showGuide=false;SaveWorkflow();}
     }
 

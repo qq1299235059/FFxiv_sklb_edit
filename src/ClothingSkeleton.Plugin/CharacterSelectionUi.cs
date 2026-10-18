@@ -25,11 +25,12 @@ public sealed partial class Plugin
         characterSelection=null;
         var chosen=ReadCharacterSelection(kind);
         characterSelection=chosen;
-        if(sourceMode==0)
+        if(sourceMode==0 || sourceMode==3)
         {
-            source=chosen.TopGamePath??"";
+            if(activeMod is not null && chosen.TopGamePath is null)sourceMode=3;
+            source=sourceMode==3?chosen.Source.GamePath:chosen.TopGamePath??"";
             localTargetGamePath=source;
-            modelPath=$"chara/equipment/e{chosen.Source.EquippedTopSetId:D4}/model/c{chosen.Source.RaceSexId:D4}e{chosen.Source.EquippedTopSetId:D4}_top.mdl";
+            if(activeMod is null)modelPath=$"chara/equipment/e{chosen.Source.EquippedTopSetId:D4}/model/c{chosen.Source.RaceSexId:D4}e{chosen.Source.EquippedTopSetId:D4}_top.mdl";
         }
         status=$"已选择{(kind=="self"?"自己":"当前目标")}：{chosen.Source.DisplayName}。人物骨架将从原版游戏文件导出。";
         if(chosen.TopGamePath is null)status+="当前上衣没有可直接使用的原版附加骨架，请另选服装骨架路径或文件。";

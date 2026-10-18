@@ -53,6 +53,7 @@ else if (args[0] == "raw")
     File.WriteAllBytes(args[3], resource.Data);
     Console.WriteLine($"Extracted original SqPack resource: {args[2]} ({resource.Data.Length} bytes)");
 }
+else if(args[0]=="signatures")Signatures.Print(args[1],args.Skip(2).ToArray());
 else if (args[0] == "fields")
 {
     var library = Path.GetFullPath(args[1]);

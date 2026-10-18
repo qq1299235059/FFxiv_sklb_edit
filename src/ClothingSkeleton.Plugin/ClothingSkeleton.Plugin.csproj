@@ -2,7 +2,7 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>0.6.1</Version>
+    <Version>0.7.0</Version>
     <AssemblyName>ClothingSkeleton</AssemblyName>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -15,6 +15,7 @@
     <Reference Include="InteropGenerator.Runtime"><HintPath>$(DalamudLibPath)/InteropGenerator.Runtime.dll</HintPath><Private>false</Private></Reference>
     <None Include="../../blender/clothing_skeleton_bridge/connection.py" Link="BlenderBridge/clothing_skeleton_bridge/connection.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../blender/clothing_skeleton_bridge/__init__.py" Link="BlenderBridge/clothing_skeleton_bridge/__init__.py" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../blender/clothing_skeleton_bridge/assets.py" Link="BlenderBridge/clothing_skeleton_bridge/assets.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../blender/clothing_skeleton_bridge/anchors.py" Link="BlenderBridge/clothing_skeleton_bridge/anchors.py" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../docs/分发使用指南.md" Link="使用指南.md" CopyToOutputDirectory="PreserveNewest" />
     <None Update="ClothingSkeleton.json" CopyToOutputDirectory="PreserveNewest" />

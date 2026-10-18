@@ -3,10 +3,12 @@ using System.Text.Json;
 
 namespace ClothingSkeleton.Core;
 
-public sealed record MidlanderFemaleEst(ushort SetId,ushort SkeletonId,ushort? SourceSkeletonId=null)
+public sealed record MidlanderFemaleEst(ushort SetId,ushort SkeletonId,ushort? SourceSkeletonId=null,int RaceSexId=201)
 {
-    public string GamePath => $"chara/human/c0201/skeleton/top/t{SkeletonId:D4}/skl_c0201t{SkeletonId:D4}.sklb";
-    public string? SourceGamePath => SourceSkeletonId is{} source?$"chara/human/c0201/skeleton/top/t{source:D4}/skl_c0201t{source:D4}.sklb":null;
+    public string Gender=>RaceSexId/100%2==0?"Female":"Male";
+    public string Race=>new[]{"Midlander","Highlander","Elezen","Miqote","Roegadyn","Lalafell","AuRa","Hrothgar","Viera"}[(RaceSexId/100-1)/2];
+    public string GamePath => $"chara/human/c{RaceSexId:D4}/skeleton/top/t{SkeletonId:D4}/skl_c{RaceSexId:D4}t{SkeletonId:D4}.sklb";
+    public string? SourceGamePath => SourceSkeletonId is{} source?$"chara/human/c{RaceSexId:D4}/skeleton/top/t{source:D4}/skl_c{RaceSexId:D4}t{source:D4}.sklb":null;
 }
 
 public static class PenumbraModPackage
@@ -36,7 +38,7 @@ public static class PenumbraModPackage
         {
             Name="", Description="", Priority=0,
             Files=files,
-            FileSwaps=new Dictionary<string,string>(), Manipulations=est is null?Array.Empty<object>():new object[]{new{Type="Est",Manipulation=new{Entry=est.SkeletonId,Gender="Female",Race="Midlander",SetId=est.SetId,Slot="Body"}}},
+            FileSwaps=new Dictionary<string,string>(), Manipulations=est is null?Array.Empty<object>():new object[]{new{Type="Est",Manipulation=new{Entry=est.SkeletonId,Gender=est.Gender,Race=est.Race,SetId=est.SetId,Slot="Body"}}},
         },options));
         ZipFile.CreateFromDirectory(destinationDirectory,destinationDirectory+".pmp");
         return destinationDirectory+".pmp";
