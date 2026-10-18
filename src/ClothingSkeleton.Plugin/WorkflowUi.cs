@@ -260,7 +260,7 @@ public sealed partial class Plugin
         DrawBridgeStatus();
         if(PrimaryButton("发送当前骨架到 Blender"))TryUi(OpenBlender);
         ImGui.Spacing();
-        ImGui.TextWrapped("在右侧“服装骨架”面板添加骨骼或骨链。完成后点击“返回游戏”，回到游戏即可继续。");
+        ImGui.TextWrapped("Blender 中按 Tab 进入编辑模式，用 Shift+A 添加、E 挤出骨链。面板提供集合显示、状态检查和一键整理；检查通过后点击“返回游戏”。");
         ImGui.TextWrapped("完整人体挂点与服装原骨显示在同一骨架中。选挂点后添加新链，或选新链根骨再选挂点，Ctrl+P → 保持偏移。未用挂点会在返回时自动忽略。");
         ImGui.TextWrapped("原有骨骼需要保留；服装网格与权重仍由模型工具处理。");
         ImGui.Spacing();

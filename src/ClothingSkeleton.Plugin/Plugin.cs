@@ -602,7 +602,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void WriteStatus(string state, string detail)
     {
         var path=Path.Combine(outputRoot,"status.json");
-        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new { state, detail=SafeDetail(detail), timestamp = DateTimeOffset.UtcNow, pluginVersion = "0.6.0", gameVersion = "2026.10.06.0000.0000" }, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new { state, detail=SafeDetail(detail), timestamp = DateTimeOffset.UtcNow, pluginVersion = "0.6.1", gameVersion = "2026.10.06.0000.0000" }, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(path+".tmp",path,true);
     }
 

@@ -78,15 +78,16 @@ for chain,target in zip(chains,("j_te_l","j_te_r")):
     assert gltf["nodes"][parents[i]]["name"]==target
 manifest=json.loads(returned.with_suffix(".complete.json").read_text())
 assert manifest["boneCount"]==20 and manifest["gltfSha256"]==hashlib.sha256(returned.read_bytes()).hexdigest()
-# An edited but unused helper must not enter the file or block pruning.
+# The status check now protects unused original body helpers as well.
 bpy.ops.object.mode_set(mode="EDIT")
 unused=arm.data.edit_bones["n_buki_r"]
 saved_head,saved_tail=unused.head.copy(),unused.tail.copy()
 unused.head.x+=.02
 unused.tail.x+=.02
 bpy.ops.object.mode_set(mode="OBJECT")
-bridge.export_project(arm)
-assert "n_buki_r" not in {n.get("name") for n in json.loads(returned.read_text())["nodes"]}
+try:bridge.export_project(arm)
+except ValueError:pass
+else:raise AssertionError("Changed body rest pose must be rejected")
 bpy.ops.object.mode_set(mode="EDIT")
 arm.data.edit_bones["n_buki_r"].head=saved_head
 arm.data.edit_bones["n_buki_r"].tail=saved_tail
@@ -102,14 +103,17 @@ alias_root=next(i for i,n in enumerate(alias_nodes) if n.get("name")==extra[0])
 assert alias_nodes[alias_parent[alias_root]]["name"]==baseline["bones"][0]["name"]
 bpy.ops.object.mode_set(mode="EDIT")
 for name in extra:arm.data.edit_bones.remove(arm.data.edit_bones[name])
-# Test the actual add-chain operator with a body anchor active in Edit Mode.
+# Test native extrusion with a body anchor active in Edit Mode.
 for bone in arm.data.edit_bones:bone.select=False
 arm.data.edit_bones["j_te_l"].select=True
 arm.data.edit_bones.active=arm.data.edit_bones["j_te_l"]
 existing_names=set(arm.data.edit_bones.keys())
-assert bpy.ops.csw.add_chain()=={"FINISHED"}
+assert bpy.ops.armature.extrude()=={"FINISHED"}
+created=next(b for b in arm.data.edit_bones if b.name not in existing_names)
+created.tail=created.head+Vector((0,.04,0))
+helper.sync_collections(arm)
 operator_names=set(arm.data.edit_bones.keys())-existing_names
-assert len(operator_names)==4
+assert len(operator_names)==1
 bpy.ops.object.mode_set(mode="OBJECT")
 operator_root=next(b for b in arm.data.bones if b.name in operator_names and b.parent and b.parent.name=="j_te_l")
 assert operator_root
@@ -136,7 +140,7 @@ report=dict(state="passed",originalBoneCount=10,selectableBodyAnchorCount=106,au
             usedAnchorCount=2,ignoredAnchorCount=104,candidateBoneCount=20,manualParentingVerified=True,
             bothHandsIndependent=True,exportedWorldPositionsPreserved=True,originalRestPosesPreserved=True,
             authoringSceneUnchangedByExport=True,unparentedChainRejected=True,failedReturnPreserved=True,
-            unusedEditedAnchorIgnored=True,existingAttachmentReused=True,addOperatorUsesActiveBodyAnchor=True,
+            unusedEditedAnchorRejected=True,existingAttachmentReused=True,nativeExtrusionUsesActiveBodyAnchor=True,
             gameMotionVerified=False)
 report_path.parent.mkdir(parents=True,exist_ok=True)
 report_path.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")

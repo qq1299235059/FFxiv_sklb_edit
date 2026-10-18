@@ -26,7 +26,19 @@ def run(plugin,label,addon=None):
     result=subprocess.run(["python",str(root/"tools/test_network_bridge.py"),"--blender",a.blender,"--source",str(Path(a.source).resolve()),"--addon",str(addon or plugin/"BlenderBridge/clothing_skeleton_bridge"),"--output",str(output),"--return-root",str(plugin)],capture_output=True,encoding="utf-8",errors="replace",timeout=100)
     (trial/(label+".log")).write_text(result.stdout+result.stderr,encoding="utf-8")
     if result.returncode:raise RuntimeError(f"{label} network test failed; inspect private log")
-    return json.loads((output/"report.json").read_text(encoding="utf-8"))
+    report=json.loads((output/"report.json").read_text(encoding="utf-8"))
+    collections=trial/(label+"-collections")
+    collections.mkdir()
+    env=os.environ.copy();env["BLENDER_USER_RESOURCES"]=str(collections/"res")
+    checked=subprocess.run([a.blender,"--background","--factory-startup","--python-exit-code","1","--python",str(root/"tools/blender_collections_smoke.py"),"--",str(Path(a.source).resolve()),str(addon or plugin/"BlenderBridge/clothing_skeleton_bridge"),str(collections)],capture_output=True,encoding="utf-8",errors="replace",env=env,timeout=45)
+    (trial/(label+"-collections.log")).write_text(checked.stdout+checked.stderr,encoding="utf-8")
+    if checked.returncode:raise RuntimeError(f"{label} collection/status test failed; inspect private log")
+    returned=Path((collections/"returned-file.txt").read_text(encoding="utf-8"))
+    validated=subprocess.run([str(root/".tools/dotnet/dotnet.exe"),str(root/"tools/EnvironmentProbe/bin/Debug/net10.0/EnvironmentProbe.dll"),"validate-gltf",str(Path(a.source).resolve()/"snapshot.json"),str(returned),str(collections/"validated.json")],capture_output=True,timeout=20)
+    if validated.returncode:raise RuntimeError("Native Blender authoring return failed core validation")
+    report["collections"]=json.loads((collections/"report.json").read_text(encoding="utf-8"))
+    report["collections"]["coreNativeEditingImportPassed"]=True
+    return report
 
 initial=run(first,"first")
 previous=(first/"BlenderReturn/edited.gltf").read_bytes();stamp=(first/"BlenderReturn/edited.gltf").stat().st_mtime_ns

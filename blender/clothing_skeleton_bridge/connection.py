@@ -167,6 +167,9 @@ class Connection:
                         obj.get("csw_network_revision") == revision and "csw_baseline" in obj and
                         json.loads(obj["csw_baseline"])["projectId"] == project_id]
             if existing:
+                if "csw_body_reference" not in existing[0]:
+                    from . import anchors
+                    anchors.capture_body_reference(existing[0], json.loads(base64.b64decode(project["files"]["reference.ffxiv.json"])))
                 bpy.context.scene["csw_active_project_id"] = project_id
                 self.message = "当前工程已有此骨架，已保留现有编辑"
             else:

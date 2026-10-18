@@ -30,7 +30,7 @@ public sealed class BlenderBridgeServer : IDisposable
     private long acceptedReturns;
     public int Port {get;}
 
-    public BlenderBridgeServer(string returnFile,int port=BridgeExchange.DefaultPort,string version="0.6.0")
+    public BlenderBridgeServer(string returnFile,int port=BridgeExchange.DefaultPort,string version="0.6.1")
     {
         if(port is <0 or >65535)throw new ArgumentOutOfRangeException(nameof(port));
         this.returnFile=returnFile;this.version=version;

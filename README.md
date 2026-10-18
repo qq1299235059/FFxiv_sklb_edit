@@ -4,7 +4,7 @@
 
 在游戏中选择“自己”或“当前目标”，按该角色导出对应的原版人物骨架，不使用预设人物参考。Blender 中同时显示人物挂点和服装原骨；你可以手动给新骨链指定父级，未用挂点在导出时自动忽略，原场景保持完整。
 
-当前版本：**0.6.0 开发预览版**。通过本机端口发送至已打开的 Blender，保留当前工程。已通过 133 项核心检查、真实 Blender 往返和游戏内 Havok 文件转换。多挂点的角色动作随动、外部动画/物理引用和服装加权仍需实际验收。
+当前版本：**0.6.1 开发预览版**。Blender 按集合区分人物与服装骨骼，提供原骨状态检查及一键整理。通过本机端口发送至已打开的 Blender，保留当前工程。已通过 133 项核心检查、真实 Blender 往返和游戏内 Havok 文件转换。多挂点的角色动作随动、外部动画/物理引用和服装加权仍需实际验收。
 
 ## 通过 Dalamud 仓库安装
 
@@ -39,9 +39,9 @@
 
 客户端与 API 不匹配时，插件可能不出现在可安装列表中；原生转换也会检查客户端版本。国际服与其他客户端构建尚未适配。
 
-- [Dalamud 插件 ZIP](https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.6.0/ClothingSkeleton-0.6.0.zip)
-- [单独的 Blender 插件 ZIP](https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.6.0/ClothingSkeleton-Blender-0.6.0.zip)
-- [文件 SHA256](downloads/0.6.0/SHA256SUMS.txt) · [分发检查](downloads/0.6.0/verification.json)
+- [Dalamud 插件 ZIP](https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.6.1/ClothingSkeleton-0.6.1.zip)
+- [单独的 Blender 插件 ZIP](https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.6.1/ClothingSkeleton-Blender-0.6.1.zip)
+- [文件 SHA256](downloads/0.6.1/SHA256SUMS.txt) · [分发检查](downloads/0.6.1/verification.json)
 
 手动安装作为备用：完整解压 Dalamud ZIP，将 `ClothingSkeleton.dll` 添加为开发插件，保留同目录下的核心程序与 `BlenderBridge` 文件夹。
 
@@ -59,9 +59,11 @@
 
 在 3D 视图按 **N**，打开右侧 **服装骨架** 面板。选择 `服装骨架_编辑此对象`，按 **Tab** 进入编辑模式。
 
-- **直接创建**：选中目标父骨，例如左手 `j_te_l` 或右手 `j_te_r`，点击 **添加三段骨链**。工具生成三个骨段和末端节点，第一段挂在活动骨下面。
+- **直接创建**：在编辑模式用 **Shift+A** 添加骨骼，再手动指定父级；也可选中目标父骨尾端，用 **E** 挤出并继续建立骨链。新增骨骼自动归入“服装骨骼”集合。
 - **手动改父级**：取消其他选择，只选择新链第一根；按住 Shift 最后选择目标挂点，使其成为活动骨，执行 **Ctrl+P → 保持偏移**。后续骨段继续保留链式父级。
 - 不同骨链可以分别挂到左右手，多条链也可共用同一个挂点。只编辑新增骨骼，保留原服装骨骼与人体挂点的名称和静止姿态，不要变换整个骨架对象。
+
+面板提供 **人物骨骼 / 服装原骨 / 服装骨骼** 三个骨骼集合，可分别切换显示。原生新骨会自动分类；已有新骨误放进人物集合时，会显示错误并阻止返回。点击 **整理新增服装骨骼** 一键归集，不改变父级、位置或当前模式。人物原骨被删除、改名、改父级或改静止姿态时，需要恢复原状。新骨链挂在手腕等人物骨骼下是合法父级，不会因此报错。
 
 点击 **返回游戏**。只有实际作为新骨父级的挂点才进入返回文件；其他挂点及辅助祖先自动忽略，Blender 场景保持完整。中原女样本提供 106 个可选人体骨骼。
 
@@ -106,7 +108,7 @@
 | `blender/clothing_skeleton_bridge` | Blender 工具源码 |
 | `tests/ClothingSkeleton.Tests` | 133 项核心检查 |
 | `tools` | 本地构建、打包、发布准备与验证工具 |
-| `downloads/0.6.0` | 清理过的可安装文件、指南和哈希 |
+| `downloads/0.6.1` | 清理过的可安装文件、指南和哈希 |
 
 构建需要匹配的国服 Dalamud 开发程序集。`python tools/bootstrap_sdk.py` 准备项目本地 .NET SDK，再运行 `./tools/build.ps1 -Test`、`./tools/build.ps1 -Release` 和 `python tools/package_release.py`。原生测试需要对应客户端；开发文件指令默认关闭。
 

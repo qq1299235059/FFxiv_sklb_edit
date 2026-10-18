@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Clothing Skeleton Bridge",
     "author": "ClothingSkeleton contributors",
-    "version": (0, 6, 0),
+    "version": (0, 6, 1),
     "blender": (4, 5, 0),
     "location": "3D View > Sidebar > 服装骨架",
     "description": "Import protected FFXIV clothing skeletons and export appended bones",
@@ -115,6 +115,7 @@ def _import_project(filepath):
         reference_objects = set(bpy.data.objects) - before_reference
         if descriptor_path.is_file() and descriptor.get("available"):
             anchors.add_reference(armature, reference_objects)
+            anchors.capture_body_reference(armature, json.loads(reference_path.with_suffix(".ffxiv.json").read_text(encoding="utf-8-sig")))
             reference_objects = []
         for obj in reference_objects:
             obj["csw_reference"] = True
@@ -129,6 +130,7 @@ def _import_project(filepath):
                 obj.hide_set(True)
             obj.select_set(False)
             obj.hide_select = True
+    anchors.sync_collections(armature)
     armature.name = "服装骨架_编辑此对象"
     armature.show_in_front = True
     bpy.ops.object.select_all(action="DESELECT")
@@ -218,6 +220,10 @@ def _export_project(armature, filepath):
         raise ValueError("请先打开服装骨架项目")
     if armature.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
+    anchors.sync_collections(armature)
+    state = anchors.check_status(armature)
+    if not state["ok"]:
+        raise ValueError("状态检查未通过：" + state["errors"][0])
     baseline = json.loads(armature["csw_baseline"])
     bpy.context.view_layer.update()
     expected_world = Matrix.Identity(4)
@@ -375,25 +381,6 @@ class CSW_OT_return(bpy.types.Operator):
             return {"CANCELLED"}
 
 
-class CSW_OT_add_bone(bpy.types.Operator):
-    bl_idname = "csw.add_bone"
-    bl_label = "添加服装骨骼"
-
-    def execute(self, context):
-        armature = current_armature(context)
-        if not armature or armature.type != "ARMATURE" or "csw_baseline" not in armature:
-            self.report({"ERROR"}, "请先导入服装骨架项目")
-            return {"CANCELLED"}
-        selected = context.active_bone.name if context.object == armature and context.active_bone else None
-        try:
-            name = add_test_bone(armature, "csw_bone", selected)
-            focus_new_bones(armature, [name])
-        except Exception as error:
-            self.report({"ERROR"}, safe_error(error))
-            return {"CANCELLED"}
-        return {"FINISHED"}
-
-
 class CSW_PT_panel(bpy.types.Panel):
     bl_label = "服装骨架"
     bl_idname = "CSW_PT_panel"
@@ -416,23 +403,38 @@ class CSW_PT_panel(bpy.types.Panel):
             self.layout.operator("csw.import_project", text="手动打开项目…")
             return
         baseline = json.loads(armature["csw_baseline"])
-        helpers = [bone for bone in armature.data.bones if anchors.is_anchor(bone)]
+        helpers = [bone for bone in anchors.editable_bones(armature) if anchors.is_anchor(bone)]
         self.layout.label(text=f"原骨 {len(baseline['bones'])} · 新增 {len(anchors.authored(armature))}")
         self.layout.label(text=f"可选人体挂点 {armature.get('csw_anchor_display_count', 0)} · 已用 {len(anchors.used(armature))}")
         character = (anchors.info(armature) or {}).get("characterSource", {})
         if character:
             self.layout.label(text="人物来源：" + ("自己" if character.get("selectionKind") == "self" else "当前目标") + " · " + character.get("displayName", ""))
-        self.layout.label(text="编辑模式选择挂点后添加骨链")
+        box = self.layout.box()
+        box.label(text="骨骼集合（切换显示）")
+        collections = anchors.bone_collections(armature)
+        for role, label in anchors.COLLECTIONS:
+            box.prop(collections[role], "is_visible", text=label, toggle=True)
+        self.layout.label(text="Tab 编辑模式，Shift+A 添加，E 挤出骨链")
         self.layout.label(text="已有新链：选根骨，再选挂点")
         self.layout.label(text="Ctrl+P → 保持偏移，手动指定父级")
         self.layout.label(text="未使用的挂点在返回时自动忽略")
         if not helpers:
             self.layout.label(text="完整挂点不可用时，请在新版插件新建项目")
-        self.layout.operator("csw.add_bone", icon="BONE_DATA")
-        self.layout.operator("csw.add_chain", icon="CONSTRAINT_BONE")
+        self.layout.label(text="新增骨骼自动归入“服装骨骼”集合")
+        self.layout.operator("csw.arrange_custom", text="整理新增服装骨骼", icon="OUTLINER_COLLECTION")
+        state = anchors.check_status(armature)
+        box = self.layout.box()
+        box.alert = not state["ok"]
+        box.label(text="状态检查通过" if state["ok"] else f"状态检查：{len(state['errors'])} 项错误", icon="CHECKMARK" if state["ok"] else "ERROR")
+        box.label(text=f"对照人物原骨 {state['bodyBoneCount']} · 新增服装骨骼 {state['customBoneCount']}")
+        for error in state["errors"][:5]:
+            box.label(text=error)
+        if not state["ok"]:
+            box.label(text="集合错误可先整理；原骨姿态和父级需恢复")
         self.layout.separator()
         row = self.layout.row()
         row.scale_y = 1.6
+        row.enabled = state["ok"]
         row.operator("csw.return_to_game", icon="EXPORT")
         self.layout.label(text="通过本机连接返回，成功后切回游戏检查")
         self.layout.label(text="人体挂点可直接选作新链父级")
@@ -441,23 +443,24 @@ class CSW_PT_panel(bpy.types.Panel):
         advanced.operator("csw.import_project", text="打开其他项目…")
 
 
-class CSW_OT_add_chain(bpy.types.Operator):
-    bl_idname = "csw.add_chain"
-    bl_label = "添加三段骨链"
+class CSW_OT_arrange_custom(bpy.types.Operator):
+    bl_idname = "csw.arrange_custom"
+    bl_label = "整理新增服装骨骼"
+    bl_description = "将所有新增服装骨骼移入服装骨骼集合，并移出人物及服装原骨集合；保留父级、位置和当前模式"
+    bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
         armature = current_armature(context)
-        if not armature or armature.type != "ARMATURE" or "csw_baseline" not in armature:
-            self.report({"ERROR"}, "请先导入服装骨架项目")
+        if not armature:
+            self.report({"ERROR"}, "请先选择服装骨架")
             return {"CANCELLED"}
-        selected = context.active_bone.name if context.object == armature and context.active_bone else None
         try:
-            names = add_test_chain(armature, selected)
-            focus_new_bones(armature, names)
+            count = anchors.arrange_custom(armature)
+            self.report({"INFO"}, f"已整理 {count} 根新增服装骨骼，父级和位置保持")
+            return {"FINISHED"}
         except Exception as error:
             self.report({"ERROR"}, safe_error(error))
             return {"CANCELLED"}
-        return {"FINISHED"}
 
 
 class CSW_Preferences(bpy.types.AddonPreferences):
@@ -499,6 +502,12 @@ class CSW_OT_disconnect(bpy.types.Operator):
 
 
 def connection_tick():
+    editing = [obj for obj in bpy.context.objects_in_mode_unique_data if obj.type == "ARMATURE" and "csw_baseline" in obj]
+    if not editing:
+        armature = current_armature(bpy.context)
+        editing = [armature] if armature else []
+    for armature in editing:
+        anchors.sync_collections(armature)
     interval = connection.bridge.tick(bpy, import_project)
     for screen in bpy.data.screens:
         for area in screen.areas:
@@ -507,7 +516,7 @@ def connection_tick():
     return interval
 
 
-CLASSES = (CSW_Preferences, CSW_OT_connect, CSW_OT_disconnect, CSW_OT_import, CSW_OT_return, CSW_OT_add_bone, CSW_OT_add_chain, CSW_PT_panel)
+CLASSES = (CSW_Preferences, CSW_OT_connect, CSW_OT_disconnect, CSW_OT_import, CSW_OT_return, CSW_OT_arrange_custom, CSW_PT_panel)
 
 
 def register():
