@@ -6,7 +6,8 @@ namespace ClothingSkeleton.Core;
 
 public sealed record ExistingAnchor(Guid RootId,string RootName,string BoneName,int ReferenceBoneIndex);
 public sealed record AnchorRigInfo(Guid ProjectId,string SourceGamePath,string SourceSha256,string ReferenceGamePath,string ReferenceSha256,
-    List<ExistingAnchor> ExistingAnchors,List<AttachmentTarget> Targets,int SchemaVersion=1,bool Available=true,int MaxConnections=4);
+    List<ExistingAnchor> ExistingAnchors,List<AttachmentTarget> Targets,int SchemaVersion=1,bool Available=true,int MaxConnections=4,
+    CharacterSkeletonSource? CharacterSource=null);
 
 /// <summary>Compiles used authoring anchors into the original game's multi-root equipment format.</summary>
 public sealed class EquipmentAnchorPlan

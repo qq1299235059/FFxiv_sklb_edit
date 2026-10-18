@@ -5,6 +5,8 @@ Set-Location -LiteralPath $projectRoot
 $plugin=Join-Path $projectRoot 'src/ClothingSkeleton.Plugin/bin/Debug'
 $out=Join-Path $projectRoot ('outputs/anchor-rig-check/trial-'+[DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $out -Force | Out-Null
+python tools/runtime_request.py select-character --selection self
+if($LASTEXITCODE -ne 0){throw 'Select a live Midlander female character before the original fixture check.'}
 # This original sample proves that the new descriptor and roots-first layout are
 # used by the game itself; it is never installed on an actor by this test.
 python tools/runtime_request.py inspect --path 'chara/human/c0201/skeleton/top/t0377/skl_c0201t0377.sklb'
@@ -39,7 +41,9 @@ python tools/runtime_request.py est-package
 if($LASTEXITCODE -ne 0){throw 'Equipment-only package generation failed.'}
 python tools/runtime_request.py preview-selftest
 if($LASTEXITCODE -ne 0){throw 'Unassigned Penumbra registration rollback failed.'}
-$report=@{state='passed';version='0.4.0';originalSqPackOnly=$true;originalMultiRootSampleVerified=$true;originalMultiRootConnectionCount=2;
+$manifest=Get-Content -LiteralPath (Join-Path $plugin 'ClothingSkeleton.json') -Raw | ConvertFrom-Json
+$report=@{state='passed';version=($manifest.AssemblyVersion.Split('.')[0..2] -join '.');originalSqPackOnly=$true;originalMultiRootSampleVerified=$true;originalMultiRootConnectionCount=2;
+    selectedSceneCharacterVerified=$true;characterSelectionKind='self';noPresetBodyFallback=$true;liveModSkeletonCopied=$false;
     selectableBodyAnchorCount=106;usedAnchorCount=2;ignoredAnchorCount=104;authoredBoneCount=8;originalBoneCount=10;candidateBoneCount=20;
     manualParentingVerified=$true;nativeFileConversionVerified=$true;originalRestAndParentRelationshipsPreserved=$true;
     originalLayerIndicesRemapped=$true;connections=@(22,64,65);packageInstalled=$false;actorPreviewApplied=$false;gameMotionVerified=$false;

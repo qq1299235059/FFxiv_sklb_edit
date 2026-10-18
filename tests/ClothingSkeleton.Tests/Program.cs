@@ -214,4 +214,5 @@ Reject(()=>EquipmentAttachment.Create(attachmentOriginal,attachmentBaseline with
 var mountedLayer=SklbContainer.Parse(mount.ApplyWrapper(SklbLayerTable.Append(attachmentOriginal,attachmentOriginal.Payload.Span,attachmentBaseline,logical)));
 Check(SklbLayerTable.Read(mountedLayer,4).Single().BoneIndices.SequenceEqual(new[]{0,1,2,3}) && mountedLayer.Payload.Span.SequenceEqual(attachmentOriginal.Payload.Span),"attachment and added layer membership compose without changing the Havok payload boundary");
 AnchorChecks.Run(Check,Reject,exchangeDir);
+CharacterSourceChecks.Run(Check,Reject);
 Console.WriteLine($"{passed} checks passed.");

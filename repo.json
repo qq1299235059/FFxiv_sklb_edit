@@ -3,10 +3,10 @@
     "Author": "ClothingSkeleton contributors",
     "Name": "服装骨架工作台 (Clothing Skeleton Workshop)",
     "InternalName": "ClothingSkeleton",
-    "AssemblyVersion": "0.4.0.0",
+    "AssemblyVersion": "0.5.0.0",
     "RepoUrl": "https://github.com/qq1299235059/FFxiv_sklb_edit",
     "Description": "为服装替换 Mod 追加自定义骨骼。完整人体挂点、Blender 编辑、SKLB 回导校验与 Penumbra 试用。输入 /csw 打开；首次设置 Blender 地址。国服开发预览版，仅适配已验证的客户端版本。",
-    "Changelog": "0.4：完整人体挂点与服装原骨显示在同一骨架；手动指定新骨链父级；导出忽略未用挂点，支持已验证格式的多挂点连接。角色随动与服装权重仍待验收。",
+    "Changelog": "0.5：从场景选择自己或当前目标，按该角色导出原版人物骨架；不再使用预设人物参考。可读取当前上衣的原版附加骨架关联；保留手动父级和未用挂点清理。",
     "Punchline": "为服装 Mod 添加自定义骨骼",
     "ApplicableVersion": "2026.10.06.0000.0000",
     "DalamudApiLevel": 15,
@@ -20,8 +20,8 @@
     ],
     "IsHide": false,
     "IsTestingExclusive": false,
-    "DownloadLinkInstall": "https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.4.0/ClothingSkeleton-0.4.0.zip",
-    "DownloadLinkUpdate": "https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.4.0/ClothingSkeleton-0.4.0.zip",
-    "LastUpdate": 1792272811
+    "DownloadLinkInstall": "https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.5.0/ClothingSkeleton-0.5.0.zip",
+    "DownloadLinkUpdate": "https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.5.0/ClothingSkeleton-0.5.0.zip",
+    "LastUpdate": 1792296009
   }
 ]

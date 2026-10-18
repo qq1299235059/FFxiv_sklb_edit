@@ -16,6 +16,10 @@ bridge=sys.modules["clothing_skeleton_bridge"]
 arm=bridge.current_armature(bpy.context)
 helper=bridge.anchors
 baseline=json.loads(arm["csw_baseline"])
+descriptor=helper.info(arm)
+assert descriptor["characterSource"]["selectionKind"] in {"self","target"}
+assert descriptor["characterSource"]["origin"]=="selected-character-original-sqpack"
+assert descriptor["characterSource"]["gamePath"]==descriptor["referenceGamePath"]
 assert len(baseline["bones"])==10
 body=[b for b in arm.data.bones if helper.is_anchor(b)]
 body_names={b.name for b in body}
@@ -128,6 +132,7 @@ bpy.ops.object.mode_set(mode="EDIT")
 arm.data.edit_bones[chains[0][0]].parent=arm.data.edit_bones["j_te_l"]
 bpy.ops.object.mode_set(mode="OBJECT")
 report=dict(state="passed",originalBoneCount=10,selectableBodyAnchorCount=106,authoredBoneCount=8,
+            selectedCharacterSourceImported=True,noPresetBodyFallback=True,
             usedAnchorCount=2,ignoredAnchorCount=104,candidateBoneCount=20,manualParentingVerified=True,
             bothHandsIndependent=True,exportedWorldPositionsPreserved=True,originalRestPosesPreserved=True,
             authoringSceneUnchangedByExport=True,unparentedChainRejected=True,failedReturnPreserved=True,

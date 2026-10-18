@@ -63,7 +63,7 @@ public static class GltfExchange
         accessors.Add(positions); accessors.Add(Accessor(1,5123,3,"VEC4")); accessors.Add(Accessor(2,5126,3,"VEC4")); accessors.Add(Accessor(3,5123,3,"SCALAR")); accessors.Add(Accessor(4,5126,bones.Count,"MAT4"));
         var gltf = new JsonObject
         {
-            ["asset"] = new JsonObject { ["version"] = "2.0", ["generator"] = "ClothingSkeleton 0.4" },
+            ["asset"] = new JsonObject { ["version"] = "2.0", ["generator"] = "ClothingSkeleton" },
             ["extras"] = new JsonObject { ["cswProjectId"] = skeleton.ProjectId.ToString(), ["cswSourceSha256"] = skeleton.SourceSha256 },
             ["scene"] = 0,
             ["scenes"] = new JsonArray(new JsonObject { ["nodes"] = new JsonArray(bones.Count,bones.Count+1) }),

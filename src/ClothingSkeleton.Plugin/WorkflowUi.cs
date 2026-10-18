@@ -37,7 +37,7 @@ public sealed partial class Plugin
     private bool CanUseCandidate => lastCandidate is not null && !HasNewReturn;
     private bool IsOdinProject => document?.SourceGamePath==DefaultSkeletonPath;
 
-    private sealed record WorkflowSettings(string? ProjectDirectory=null,string? CandidatePath=null,string BlenderExecutable="",string ValidatedReturnHash="",string? SelectedSource=null,string? TargetGamePath=null,int SourceMode=0,bool GuideCompleted=false,bool EnableDevelopmentCommands=false,int Version=2);
+    private sealed record WorkflowSettings(string? ProjectDirectory=null,string? CandidatePath=null,string BlenderExecutable="",string ValidatedReturnHash="",string? SelectedSource=null,string? TargetGamePath=null,int SourceMode=0,bool GuideCompleted=false,bool EnableDevelopmentCommands=false,int Version=3,string CharacterSelectionKind="self");
 
     private void InitializeWorkflow()
     {
@@ -66,6 +66,7 @@ public sealed partial class Plugin
                     lastValidatedReturnHash=saved.ValidatedReturnHash??"";
                     guideCompleted=saved.GuideCompleted;
                     developmentMode=saved.EnableDevelopmentCommands;
+                    characterSelectionKind=saved.CharacterSelectionKind is "target"?"target":"self";
                 }
             }
             catch(Exception e) { log.Warning("Could not restore workflow settings: {Detail}",SafeDetail(e.Message)); }
@@ -74,8 +75,8 @@ public sealed partial class Plugin
         {
             source=document.SourceGamePath;
             localTargetGamePath=source;
-            sourceMode=IsOdinProject?0:1;
-            if(restored?.SelectedSource is{} selected) {sourceMode=Math.Clamp(restored.SourceMode,0,2);source=sourceMode==2?storage.Resolve(selected)??"":selected;localTargetGamePath=restored.TargetGamePath??document.SourceGamePath;}
+            sourceMode=1;
+            if(restored?.SelectedSource is{} selected) {sourceMode=Math.Clamp(restored.SourceMode,0,2);if(restored.Version<3 && sourceMode==0)sourceMode=1;source=sourceMode==2?storage.Resolve(selected)??"":selected;localTargetGamePath=restored.TargetGamePath??document.SourceGamePath;}
             if(lastCandidate is not null)
             {
                 try { CheckCandidate(); }
@@ -112,7 +113,7 @@ public sealed partial class Plugin
         {
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
             var selectedSource=sourceMode==2?storage.Relative(activeProjectDirectory is null?null:Path.Combine(activeProjectDirectory,"original.sklb")):source;
-            var state=new WorkflowSettings(storage.Relative(activeProjectDirectory),storage.Relative(lastCandidate),blenderExecutable,lastValidatedReturnHash,selectedSource,localTargetGamePath,sourceMode,guideCompleted,developmentMode);
+            var state=new WorkflowSettings(storage.Relative(activeProjectDirectory),storage.Relative(lastCandidate),blenderExecutable,lastValidatedReturnHash,selectedSource,localTargetGamePath,sourceMode,guideCompleted,developmentMode,CharacterSelectionKind:characterSelectionKind);
             File.WriteAllText(settingsPath+".tmp",JsonSerializer.Serialize(state,new JsonSerializerOptions{WriteIndented=true}));
             File.Move(settingsPath+".tmp",settingsPath,true);
             return true;
@@ -222,18 +223,24 @@ public sealed partial class Plugin
 
     private void DrawPrepareStep()
     {
-        ImGui.TextUnformatted("选择要编辑的服装骨架");
-        string[] sources=["原版中原女 · 奥丁神铠","其他游戏骨架","本地骨架文件"];
-        if(ImGui.BeginCombo("骨架来源",sources[sourceMode]))
+        DrawCharacterSelection();
+        ImGui.TextUnformatted("选择回导到哪套服装骨架");
+        string[] sources=["所选角色当前上衣（原版关联）","指定游戏服装骨架","本地服装骨架文件"];
+        if(ImGui.BeginCombo("服装骨架来源",sources[sourceMode]))
         {
             for(var i=0;i<sources.Length;i++)if(ImGui.Selectable(sources[i],sourceMode==i))
             {
                 sourceMode=i;
-                if(i==0) {source=DefaultSkeletonPath;modelPath="chara/equipment/e0100/model/c0201e0100_top.mdl";}
+                if(i==0)
+                {
+                    source=characterSelection?.TopGamePath??"";localTargetGamePath=source;
+                    if(characterSelection is{} chosen)modelPath=$"chara/equipment/e{chosen.Source.EquippedTopSetId:D4}/model/c{chosen.Source.RaceSexId:D4}e{chosen.Source.EquippedTopSetId:D4}_top.mdl";
+                }
                 else if(i==2 && !Path.IsPathRooted(source))source="";
             }
             ImGui.EndCombo();
         }
+        if(sourceMode==0)ImGui.TextWrapped(characterSelection?.TopGamePath is{} top?$"原版上衣骨架：{Path.GetFileName(top)}":"当前上衣没有可直接使用的原版附加骨架，可改选游戏路径或本地文件。");
         if(sourceMode==1)ImGui.InputText("游戏骨架路径",ref source,1024);
         if(sourceMode==2)
         {
@@ -247,9 +254,9 @@ public sealed partial class Plugin
             ImGui.SameLine();ImGui.TextUnformatted(string.IsNullOrWhiteSpace(source)?"未选择文件":Path.GetFileName(source));
             ImGui.InputText("要替换的游戏路径",ref localTargetGamePath,1024);
         }
-        ImGui.TextWrapped(sourceMode==0?"读取游戏原版装备骨架，并附带基础骨架作为 Blender 中的定位参考。":"当前支持上衣的附加骨架（top）。基础参考会自动从游戏原版文件读取。");
+        ImGui.TextWrapped("Blender 人物骨架按上方所选场景角色导出；服装骨架只作为追加与回导目标。当前支持上衣附加骨架（top）。");
         ImGui.Spacing();
-        ImGui.BeginDisabled(string.IsNullOrWhiteSpace(source) || sourceMode==2 && !File.Exists(source));
+        ImGui.BeginDisabled(characterSelection is null || string.IsNullOrWhiteSpace(source) || sourceMode==2 && !File.Exists(source));
         if(PrimaryButton("创建项目并打开 Blender"))ScheduleRoundTrip(true);
         if(ImGui.Button("只创建项目"))ScheduleRoundTrip();
         ImGui.EndDisabled();
@@ -358,6 +365,11 @@ public sealed partial class Plugin
     private void OpenBlender()
     {
         if(activeProjectDirectory is null)throw new InvalidOperationException("请先创建骨架项目。");
+        var characterInfo=Path.Combine(activeProjectDirectory,"anchor-rig.json");
+        if(!File.Exists(characterInfo))throw new InvalidOperationException("旧项目没有场景角色来源，请先读取自己或当前目标并重新创建项目。");
+        using(var info=JsonDocument.Parse(File.ReadAllText(characterInfo)))
+            if(!info.RootElement.TryGetProperty("characterSource",out var selected) || selected.ValueKind!=JsonValueKind.Object)
+                throw new InvalidOperationException("旧项目没有场景角色来源，请先读取自己或当前目标并重新创建项目。");
         if(!EnsureBlenderConfigured(()=>TryUi(OpenBlender)))return;
         if(openedBlender is not null && !openedBlender.HasExited && openedBlenderProject==activeProjectDirectory)
         {status="当前项目已在 Blender 中打开，请切换到 Blender 继续编辑。";return;}
@@ -422,6 +434,8 @@ public sealed partial class Plugin
         RefreshReturnedFile();
         CheckCandidate();
         if(!CanUseCandidate)throw new InvalidOperationException("Blender 有新修改，请先重新检查。");
+        var self=CharacterSkeletonReader.Capture(objects.LocalPlayer,"self");
+        self.Source.CheckEquipmentPath(document!.SourceGamePath);
         var effective=pluginInterface.GetIpcSubscriber<int,(bool,bool,(Guid,string))>("Penumbra.GetCollectionForObject.V5").InvokeFunc(0);
         if(!effective.Item1 || effective.Item3.Item1==Guid.Empty)throw new InvalidOperationException("没有找到当前角色的 Penumbra 集合，请先进入游戏并启用 Penumbra。");
         var collection=useChosenCollection?selectedCollection:effective.Item3.Item1;

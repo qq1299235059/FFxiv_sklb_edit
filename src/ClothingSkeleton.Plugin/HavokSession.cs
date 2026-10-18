@@ -20,13 +20,18 @@ internal sealed unsafe class HavokSession : IDisposable
         hkSerializeUtil.MemberFunctionPointers.LoadFromBuffer != null &&
         hkSerializeUtil.MemberFunctionPointers.Save != null;
 
-    public HavokSession(string hkxPath)
+    internal static void EnsureSupportedGameBuild()
     {
         var gameExecutable=System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
             ?? throw new InvalidOperationException("Cannot identify the current game build.");
         var versionPath=Path.Combine(Path.GetDirectoryName(gameExecutable)!,"ffxivgame.ver");
         if(!File.Exists(versionPath) || File.ReadAllText(versionPath).Trim()!="2026.10.06.0000.0000")
             throw new InvalidOperationException("当前客户端版本尚未验证，请先更新插件适配；本开发版仅支持国服 2026.10.06.0000.0000。");
+    }
+
+    public HavokSession(string hkxPath)
+    {
+        EnsureSupportedGameBuild();
         if (!BindingsAvailable) throw new InvalidOperationException("Required Havok functions are not resolved by this Dalamud build.");
         var registry = hkBuiltinTypeRegistry.Instance();
         if (registry == null) throw new InvalidOperationException("Havok type registry is unavailable.");

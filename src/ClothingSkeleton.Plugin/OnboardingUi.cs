@@ -60,7 +60,8 @@ public sealed partial class Plugin
         DrawBlenderPathInput("guide");
         ImGui.Spacing();
         ImGui.TextUnformatted("2  编辑与返回");
-        ImGui.TextWrapped("创建项目并打开 Blender → 在右侧“服装骨架”面板编辑 → 点击“返回游戏” → 切回游戏检查。");
+        ImGui.TextWrapped("先读取自己或当前目标 → 选择服装骨架并创建项目 → 在 Blender 编辑 → 点击“返回游戏” → 切回游戏检查。");
+        ImGui.TextWrapped("人物骨架按所选场景角色导出对应原版文件，不使用预设人物骨架，也不读取人物 Mod 骨架。");
         ImGui.TextWrapped("人体挂点与服装原骨显示在同一骨架。给新骨链手动指定父级，未使用的挂点会在返回时自动忽略。");
         ImGui.TextWrapped("返回文件固定保存在：插件目录 / BlenderReturn / edited.gltf。所有项目共用此位置，插件会识别当前项目，避免导入其他项目的文件。");
         ImGui.Spacing();

@@ -36,6 +36,7 @@ assert manifest["boneCount"] == 14
 assert manifest["gltfSha256"] == hashlib.sha256(returned.read_bytes()).hexdigest()
 assert len(gltf["skins"]) == 1 and len(gltf["skins"][0]["joints"]) == 14
 assert not any("基础骨架" in node.get("name", "") for node in gltf["nodes"])
+assert bridge.anchors.info(armature)["characterSource"]["origin"] == "selected-character-original-sqpack"
 assert len({node["extras"]["cswBoneId"] for node in gltf["nodes"] if "cswBoneId" in node.get("extras", {})}) == 14
 # All exported JSON must omit Blender-only source paths.
 assert "csw_source_file" not in returned.read_text(encoding="utf-8")
@@ -72,6 +73,23 @@ assert json.loads(returned.with_suffix(".complete.json").read_text(encoding="utf
 bridge.export_project(armature)
 assert json.loads(returned.with_suffix(".complete.json").read_text(encoding="utf-8"))["projectId"] == manifest["projectId"]
 before = returned.read_bytes()
+# Old projects must fail before importing any objects or replacing a valid return.
+legacy = plugin / "Projects/legacy"
+legacy.mkdir(parents=True, exist_ok=True)
+for path in project.iterdir():
+    if path.is_file():
+        shutil.copy2(path, legacy / path.name)
+legacy_descriptor = json.loads((legacy / "anchor-rig.json").read_text(encoding="utf-8-sig"))
+legacy_descriptor.pop("characterSource", None)
+(legacy / "anchor-rig.json").write_text(json.dumps(legacy_descriptor), encoding="utf-8")
+objects_before = set(bpy.data.objects)
+try:
+    bridge.import_project(legacy / "skeleton.gltf")
+except ValueError:
+    pass
+else:
+    raise AssertionError("A project without an explicit scene character must not load a preset")
+assert set(bpy.data.objects) == objects_before and returned.read_bytes() == before
 bpy.context.view_layer.objects.active = armature
 armature.select_set(True)
 bpy.ops.object.mode_set(mode="EDIT")
@@ -84,6 +102,7 @@ assert result == {"CANCELLED"}
 assert returned.read_bytes() == before, "A rejected edit must not replace the valid return file"
 bpy.ops.object.mode_set(mode="OBJECT")
 report = dict(state="passed",launcherImportedProject=True,sessionBridgeRegistered=True,
+              selectedCharacterSourceImported=True,legacyPresetProjectRejectedBeforeImport=True,
               fixedReturnPath="BlenderReturn/edited.gltf",sharedReturnAcrossProjects=True,foreignProjectIdentityPreserved=True,sourcePathsOmitted=True,originalBoneCount=10,candidateBoneCount=14,
               chainOperatorEnteredEditMode=True,returnWithoutArmatureSelection=True,
               originalEditRejected=True,validReturnPreservedAfterFailure=True,

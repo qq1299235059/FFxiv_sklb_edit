@@ -1,10 +1,12 @@
-# Clothing Skeleton Bridge 0.4
+# Clothing Skeleton Bridge 0.5
+
+0.5 的人物骨架必须先在游戏中通过“读取自己”或“读取当前目标”选择，再创建项目导出。没有场景角色来源的旧项目会拒绝打开，不加载预设人物参考。
 
 这是 FFXIV 服装骨架工作台配套的 Blender 工具。通常无需单独安装：在游戏工作台选择“创建项目并打开 Blender”，工具会在新的 Blender 窗口自动加载。
 
 ## 手动安装
 
-下载 `ClothingSkeleton-Blender-0.4.0.zip`，在 Blender 4.5 的“偏好设置 → 插件”中从磁盘安装 ZIP，启用 Clothing Skeleton Bridge。
+下载 `ClothingSkeleton-Blender-0.5.0.zip`，在 Blender 4.5 的“偏好设置 → 插件”中从磁盘安装 ZIP，启用 Clothing Skeleton Bridge。
 
 按 N 打开 3D 视图右侧“服装骨架”面板，点击“手动打开项目”，选择游戏工作台生成的 `Projects/项目/skeleton.gltf`。请保留项目的配套文件，以及项目和游戏插件安装目录的相对关系。
 

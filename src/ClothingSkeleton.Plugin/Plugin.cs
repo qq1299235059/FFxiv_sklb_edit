@@ -18,12 +18,13 @@ public sealed partial class Plugin : IDalamudPlugin
     private readonly IFramework framework;
     private readonly IPluginLog log;
     private readonly IObjectTable objects;
+    private readonly ITargetManager targets;
     private readonly string outputRoot;
     private readonly PluginStorage storage;
     private bool open = true;
     private bool busy;
-    private string source = "chara/human/c0201/skeleton/top/t0100/skl_c0201t0100.sklb";
-    private string localTargetGamePath = "chara/human/c0201/skeleton/top/t0100/skl_c0201t0100.sklb";
+    private string source = "";
+    private string localTargetGamePath = "";
     private string status = "选择骨架后，创建项目即可开始。";
     private SkeletonDocument? document;
     private SkeletonDocument? candidateDocument;
@@ -42,7 +43,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private string runtimeReport="尚未检查角色实时骨骼。文件校验通过不代表角色已加载。";
     private bool disposed;
 
-    public Plugin(IDalamudPluginInterface pluginInterface, ICommandManager commands, IDataManager data, IFramework framework, IPluginLog log,IObjectTable objects)
+    public Plugin(IDalamudPluginInterface pluginInterface, ICommandManager commands, IDataManager data, IFramework framework, IPluginLog log,IObjectTable objects,ITargetManager targets)
     {
         this.pluginInterface = pluginInterface;
         this.commands = commands;
@@ -50,6 +51,7 @@ public sealed partial class Plugin : IDalamudPlugin
         this.framework = framework;
         this.log = log;
         this.objects=objects;
+        this.targets=targets;
         preview=new(pluginInterface);
         storage=new PluginStorage(pluginInterface.AssemblyLocation.DirectoryName??throw new InvalidOperationException("无法定位插件安装目录。"));
         outputRoot=storage.Projects;
@@ -95,7 +97,8 @@ public sealed partial class Plugin : IDalamudPlugin
             using var command=JsonDocument.Parse(File.ReadAllText(claimed));
             var action=command.RootElement.GetProperty("action").GetString();
             if(action=="append") ScheduleAppend();
-            else if(action=="inspect") { source=command.RootElement.GetProperty("path").GetString()!; ScheduleRoundTrip(); }
+            else if(action=="select-character") {ApplyCharacterSelection(command.RootElement.GetProperty("selection").GetString()!);}
+            else if(action=="inspect") { sourceMode=1;source=command.RootElement.GetProperty("path").GetString()!; ScheduleRoundTrip(); }
             else if(action=="package") ExportPackage();
             else if(action=="penumbra-status")
             {
@@ -379,17 +382,24 @@ public sealed partial class Plugin : IDalamudPlugin
         status = "正在处理私有骨架副本…";
         _ = framework.RunOnFrameworkThread(() =>
         {
-            try { if(preview.Active)StopWorkflowPreview();RoundTrip(selected); if(launchBlender)OpenBlender(); }
+            try
+            {
+                var selectedCharacter=RequireCurrentCharacterSelection();
+                if(preview.Active)StopWorkflowPreview();
+                RoundTrip(selected,selectedCharacter.Source);
+                if(launchBlender)OpenBlender();
+            }
             catch (Exception e) { operationFailed=true;status = e.Message; log.Error("Skeleton round-trip failed: {Detail}",SafeDetail(e.ToString())); WriteStatus("failed", e.ToString()); }
             finally { busy = false; }
         });
     }
 
-    private void RoundTrip(string selected)
+    private void RoundTrip(string selected,CharacterSkeletonSource selectedCharacter)
     {
         if (disposed) return;
         var local=Path.IsPathRooted(selected);
         var gamePath=local?localTargetGamePath.Trim():selected;
+        selectedCharacter.CheckEquipmentPath(gamePath);
         if(!Regex.IsMatch(gamePath,@"^chara/human/c\d{4}/skeleton/top/t\d{4}/skl_c\d{4}t\d{4}\.sklb$"))
             throw new InvalidDataException("本开发版只处理 top 服装附加骨架；请填写对应的 chara/human/.../skeleton/top/...sklb 游戏路径。");
         var bytes = local
@@ -431,20 +441,21 @@ public sealed partial class Plugin : IDalamudPlugin
         }
         File.WriteAllBytes(Path.Combine(directory, "candidate.sklb"), candidateBytes);
         GltfExchange.Export(exported,Path.Combine(directory,"skeleton.gltf"));
-        var reference=ExportOriginalReference(gamePath,directory);
+        var reference=ExportOriginalReference(selectedCharacter,directory);
         try
         {
-            var attachment=EquipmentAnchorPlan.Describe(container,exported,reference);
+            var attachment=EquipmentAnchorPlan.Describe(container,exported,reference) with{CharacterSource=selectedCharacter};
             File.WriteAllText(Path.Combine(directory,"anchor-rig.json"),JsonSerializer.Serialize(attachment,SkeletonDocument.JsonOptions));
         }
         catch(InvalidDataException e)
         {
-            File.WriteAllText(Path.Combine(directory,"anchor-rig.json"),JsonSerializer.Serialize(new{available=false,reason=SafeDetail(e.Message)}));
+            File.WriteAllText(Path.Combine(directory,"anchor-rig.json"),JsonSerializer.Serialize(new{available=false,reason=SafeDetail(e.Message),characterSource=selectedCharacter},SkeletonDocument.JsonOptions));
+            throw new InvalidDataException("所选服装骨架不能与该角色的原版骨架建立受支持的挂接："+e.Message,e);
         }
-        File.WriteAllText(Path.Combine(directory,"source-receipt.json"),JsonSerializer.Serialize(new{kind=local?"local-file-unverified":"original-sqpack",selected=local?"<本地骨架>":selected,gamePath,sourceSha256=container.Sha256,penumbraResolutionUsed=false},new JsonSerializerOptions{WriteIndented=true}));
+        File.WriteAllText(Path.Combine(directory,"source-receipt.json"),JsonSerializer.Serialize(new{kind=local?"local-file-unverified":"original-sqpack",selected=local?"<本地骨架>":selected,gamePath,sourceSha256=container.Sha256,penumbraResolutionUsed=false,characterSource=selectedCharacter,referenceGamePath=reference.SourceGamePath,referenceSha256=reference.SourceSha256},SkeletonDocument.JsonOptions));
         exported.Save(Path.Combine(directory,"snapshot.json"));
         document=exported;
-        sourceMode=local?2:gamePath==DefaultSkeletonPath?0:1;
+        if(local)sourceMode=2;
         activeProjectDirectory=directory;
         lastCandidate=null;
         candidateDocument=null;
@@ -452,17 +463,15 @@ public sealed partial class Plugin : IDalamudPlugin
         ConfigureProjectReturn();
         workflowStep=1;
         runtimeVerified=false;
-        status = $"项目已创建：{document.Bones.Count} 根原骨。接下来在 Blender 中添加骨骼。";
+        status = $"已导出所选角色的原版人物骨架（{reference.Bones.Count} 根），并载入 {document.Bones.Count} 根服装原骨。接下来在 Blender 中添加骨链并指定父级。";
         SaveWorkflow();
         WriteStatus("roundtrip-passed", status);
     }
 
-    private SkeletonDocument ExportOriginalReference(string selected,string directory)
+    private SkeletonDocument ExportOriginalReference(CharacterSkeletonSource selected,string directory)
     {
-        var race=Regex.Match(selected,@"^chara/human/c(\d{4})/skeleton/top/");
-        if(!race.Success) throw new InvalidDataException("无法确定装备的人体骨架种族。");
-        var code=race.Groups[1].Value;
-        var gamePath=$"chara/human/c{code}/skeleton/base/b0001/skl_c{code}b0001.sklb";
+        selected.Validate();
+        var gamePath=selected.GamePath;
         var bytes=data.GetFile<Lumina.Data.FileResource>(gamePath)?.Data ?? throw new FileNotFoundException("Original base skeleton not found",gamePath);
         var container=SklbContainer.Parse(bytes);
         var hkx=Path.Combine(directory,"reference.hkx");
@@ -507,10 +516,17 @@ public sealed partial class Plugin : IDalamudPlugin
         if(candidate.AnchorSchemaVersion==1)
         {
             // Resolve against fresh original SqPack data, never a character Mod or editable Blender metadata.
-            var race=Regex.Match(baseline.SourceGamePath,@"^chara/human/c(\d{4})/skeleton/top/");
-            if(!race.Success)throw new InvalidDataException("无法确定挂接所需的人体骨架。");
-            var code=race.Groups[1].Value;
-            var referencePath=$"chara/human/c{code}/skeleton/base/b0001/skl_c{code}b0001.sklb";
+            var savedReference=SkeletonDocument.Load(Path.Combine(project,"reference-snapshot.json"));
+            var referencePath=savedReference.SourceGamePath;
+            var sourceInfo=JsonSerializer.Deserialize<AnchorRigInfo>(File.ReadAllText(Path.Combine(project,"anchor-rig.json")),SkeletonDocument.JsonOptions);
+            if(sourceInfo?.CharacterSource is{} characterSource)
+            {
+                characterSource.CheckEquipmentPath(baseline.SourceGamePath);
+                if(characterSource.GamePath!=referencePath)throw new InvalidDataException("项目的人物选择与导出参考不一致，请重新读取角色并创建项目。");
+            }
+            var expected=Regex.Match(baseline.SourceGamePath,@"^chara/human/c(\d{4})/skeleton/top/");
+            if(!expected.Success || referencePath!=$"chara/human/c{expected.Groups[1].Value}/skeleton/base/b0001/skl_c{expected.Groups[1].Value}b0001.sklb")
+                throw new InvalidDataException("项目的人物参考路径无效。");
             var referenceBytes=data.GetFile<Lumina.Data.FileResource>(referencePath)?.Data??throw new FileNotFoundException("未找到原版人体骨架。");
             var referenceContainer=SklbContainer.Parse(referenceBytes);
             var referenceHkx=Path.Combine(project,"attachment-reference.hkx");
@@ -518,7 +534,6 @@ public sealed partial class Plugin : IDalamudPlugin
             using var referenceSession=new HavokSession(referenceHkx);
             var reference=referenceSession.Snapshot(referenceContainer.Sha256,referencePath);
             // A game update or altered local reference must not silently move the Blender bind pose.
-            var savedReference=SkeletonDocument.Load(Path.Combine(project,"reference-snapshot.json"));
             if(savedReference.SourceSha256!=reference.SourceSha256 || savedReference.SourceGamePath!=referencePath)
                 throw new InvalidDataException("原版人体骨架与项目参考不一致，请重新创建项目。");
             anchors=EquipmentAnchorPlan.Create(original,baseline,candidate,reference,referenceContainer);
@@ -588,7 +603,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void WriteStatus(string state, string detail)
     {
         var path=Path.Combine(outputRoot,"status.json");
-        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new { state, detail=SafeDetail(detail), timestamp = DateTimeOffset.UtcNow, pluginVersion = "0.4.0", gameVersion = "2026.10.06.0000.0000" }, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new { state, detail=SafeDetail(detail), timestamp = DateTimeOffset.UtcNow, pluginVersion = "0.5.0", gameVersion = "2026.10.06.0000.0000" }, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(path+".tmp",path,true);
     }
 

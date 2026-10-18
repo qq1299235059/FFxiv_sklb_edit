@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Clothing Skeleton Bridge",
     "author": "ClothingSkeleton contributors",
-    "version": (0, 4, 0),
+    "version": (0, 5, 0),
     "blender": (4, 5, 0),
     "location": "3D View > Sidebar > 服装骨架",
     "description": "Import protected FFXIV clothing skeletons and export appended bones",
@@ -46,6 +46,15 @@ def import_project(filepath):
     filepath = Path(filepath).resolve()
     fixed_return = _return_file_for_source(filepath)
     baseline = json.loads(filepath.with_suffix(".ffxiv.json").read_text(encoding="utf-8-sig"))
+    descriptor_path = filepath.with_name("anchor-rig.json")
+    if not descriptor_path.is_file():
+        raise ValueError("请在游戏侧读取自己或当前目标，重新创建人物骨架项目")
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8-sig"))
+    character = descriptor.get("characterSource")
+    if not descriptor.get("available") or not character:
+        raise ValueError("此项目没有可用的场景角色骨架，请在游戏侧选择角色并重新创建项目")
+    if character.get("origin") != "selected-character-original-sqpack" or character.get("selectionKind") not in {"self", "target"} or character.get("gamePath") != descriptor.get("referenceGamePath"):
+        raise ValueError("人物骨架来源与项目参考不一致，请在游戏侧重新导出")
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=str(filepath), bone_heuristic="BLENDER", guess_original_bind_pose=False)
     created = set(bpy.data.objects) - before
@@ -56,7 +65,6 @@ def import_project(filepath):
     armature["csw_baseline"] = json.dumps(baseline)
     armature["csw_source_file"] = str(filepath)
     armature["csw_return_file"] = "BlenderReturn/edited.gltf"
-    descriptor_path = filepath.with_name("anchor-rig.json")
     if descriptor_path.is_file():
         descriptor = json.loads(descriptor_path.read_text(encoding="utf-8-sig"))
         if descriptor.get("available") and descriptor.get("projectId") != baseline["projectId"]:
@@ -368,6 +376,9 @@ class CSW_PT_panel(bpy.types.Panel):
         helpers = [bone for bone in armature.data.bones if anchors.is_anchor(bone)]
         self.layout.label(text=f"原骨 {len(baseline['bones'])} · 新增 {len(anchors.authored(armature))}")
         self.layout.label(text=f"可选人体挂点 {armature.get('csw_anchor_display_count', 0)} · 已用 {len(anchors.used(armature))}")
+        character = (anchors.info(armature) or {}).get("characterSource", {})
+        if character:
+            self.layout.label(text="人物来源：" + ("自己" if character.get("selectionKind") == "self" else "当前目标") + " · " + character.get("displayName", ""))
         self.layout.label(text="编辑模式选择挂点后添加骨链")
         self.layout.label(text="已有新链：选根骨，再选挂点")
         self.layout.label(text="Ctrl+P → 保持偏移，手动指定父级")
