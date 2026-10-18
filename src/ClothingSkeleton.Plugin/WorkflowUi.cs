@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text.Json;
+using ClothingSkeleton.Core;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.ImGuiFileDialog;
 
@@ -27,9 +28,9 @@ public sealed partial class Plugin
     private bool operationFailed;
     private bool runtimeCheckForWorkflow;
     private DateTime? runtimeCheckAt;
-    private Process? openedBlender;
-    private bool blenderLaunchPending;
-    private string? openedBlenderProject;
+    private BlenderBridgeServer? blenderBridge;
+    private int bridgePort=BridgeExchange.DefaultPort;
+    private string bridgeError="";
     private int workflowStep;
     private int sourceMode;
     private bool useChosenCollection;
@@ -37,7 +38,7 @@ public sealed partial class Plugin
     private bool CanUseCandidate => lastCandidate is not null && !HasNewReturn;
     private bool IsOdinProject => document?.SourceGamePath==DefaultSkeletonPath;
 
-    private sealed record WorkflowSettings(string? ProjectDirectory=null,string? CandidatePath=null,string BlenderExecutable="",string ValidatedReturnHash="",string? SelectedSource=null,string? TargetGamePath=null,int SourceMode=0,bool GuideCompleted=false,bool EnableDevelopmentCommands=false,int Version=3,string CharacterSelectionKind="self");
+    private sealed record WorkflowSettings(string? ProjectDirectory=null,string? CandidatePath=null,string BlenderExecutable="",string ValidatedReturnHash="",string? SelectedSource=null,string? TargetGamePath=null,int SourceMode=0,bool GuideCompleted=false,bool EnableDevelopmentCommands=false,int Version=4,string CharacterSelectionKind="self",int BridgePort=BridgeExchange.DefaultPort);
 
     private void InitializeWorkflow()
     {
@@ -64,7 +65,8 @@ public sealed partial class Plugin
                     }
                     blenderExecutable=saved.BlenderExecutable??"";
                     lastValidatedReturnHash=saved.ValidatedReturnHash??"";
-                    guideCompleted=saved.GuideCompleted;
+                    guideCompleted=saved.Version>=4 && saved.GuideCompleted;
+                    bridgePort=saved.BridgePort is >0 and <=65535?saved.BridgePort:BridgeExchange.DefaultPort;
                     developmentMode=saved.EnableDevelopmentCommands;
                     characterSelectionKind=saved.CharacterSelectionKind is "target"?"target":"self";
                 }
@@ -86,9 +88,8 @@ public sealed partial class Plugin
             status=lastCandidate is null?"已恢复上次项目，可以继续在 Blender 编辑。":"已恢复上次检查通过的骨架，可以继续编辑或预览。";
         }
         ConfigureProjectReturn(false);
-        blenderPathInput=blenderExecutable;
-        showGuide=!guideCompleted || !BlenderConfigured;
-        if(!BlenderConfigured)RequestBlenderSetup();
+        showGuide=!guideCompleted;
+        StartBridge();
         previewPriority=2001;
     }
 
@@ -101,7 +102,6 @@ public sealed partial class Plugin
         returnReady=false;
         returnExists=false;
         returnFromOtherProject=false;
-        blenderLaunchPending=false;
         returnCaption="在 Blender 完成编辑后，点击“返回游戏”。";
         if(activeProjectDirectory is not null)File.WriteAllText(Path.Combine(activeProjectDirectory,"bridge.json"),JsonSerializer.Serialize(new{schemaVersion=1,pluginRoot=Path.GetRelativePath(activeProjectDirectory,storage.Root).Replace('\\','/'),projectId=document!.ProjectId},new JsonSerializerOptions{WriteIndented=true}));
     }
@@ -113,7 +113,7 @@ public sealed partial class Plugin
         {
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
             var selectedSource=sourceMode==2?storage.Relative(activeProjectDirectory is null?null:Path.Combine(activeProjectDirectory,"original.sklb")):source;
-            var state=new WorkflowSettings(storage.Relative(activeProjectDirectory),storage.Relative(lastCandidate),blenderExecutable,lastValidatedReturnHash,selectedSource,localTargetGamePath,sourceMode,guideCompleted,developmentMode,CharacterSelectionKind:characterSelectionKind);
+            var state=new WorkflowSettings(storage.Relative(activeProjectDirectory),storage.Relative(lastCandidate),"",lastValidatedReturnHash,selectedSource,localTargetGamePath,sourceMode,guideCompleted,developmentMode,CharacterSelectionKind:characterSelectionKind,BridgePort:bridgePort);
             File.WriteAllText(settingsPath+".tmp",JsonSerializer.Serialize(state,new JsonSerializerOptions{WriteIndented=true}));
             File.Move(settingsPath+".tmp",settingsPath,true);
             return true;
@@ -123,20 +123,6 @@ public sealed partial class Plugin
 
     private void PollWorkflow()
     {
-        if(blenderLaunchPending && activeProjectDirectory is not null)
-        {
-            try
-            {
-                using var launch=JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(storage.ReturnFile)!,"blender-launch.json")));
-                if(!launch.RootElement.TryGetProperty("projectId",out var id) || id.GetGuid()==document!.ProjectId)
-                {
-                    var state=launch.RootElement.GetProperty("state").GetString();
-                    if(state=="opened") {status="Blender 已打开并导入当前骨架。编辑完成后点击“返回游戏”。";blenderLaunchPending=false;}
-                    else if(state=="failed") {operationFailed=true;status="Blender 打开项目失败："+SafeDetail(launch.RootElement.GetProperty("error").GetString()??"");blenderLaunchPending=false;}
-                }
-            }
-            catch(Exception e) when(e is IOException or JsonException) { /* The child process may still be writing its receipt. */ }
-        }
         if(runtimeCheckAt is{} due && DateTime.UtcNow>=due)
         {
             runtimeCheckAt=null;
@@ -257,7 +243,7 @@ public sealed partial class Plugin
         ImGui.TextWrapped("Blender 人物骨架按上方所选场景角色导出；服装骨架只作为追加与回导目标。当前支持上衣附加骨架（top）。");
         ImGui.Spacing();
         ImGui.BeginDisabled(characterSelection is null || string.IsNullOrWhiteSpace(source) || sourceMode==2 && !File.Exists(source));
-        if(PrimaryButton("创建项目并打开 Blender"))ScheduleRoundTrip(true);
+        if(PrimaryButton("创建并发送到 Blender"))ScheduleRoundTrip(true);
         if(ImGui.Button("只创建项目"))ScheduleRoundTrip();
         ImGui.EndDisabled();
         if(document is not null)
@@ -270,8 +256,9 @@ public sealed partial class Plugin
     private void DrawBlenderStep()
     {
         ImGui.TextUnformatted("在 Blender 中编辑新增骨骼");
-        ImGui.TextWrapped("打开后会自动导入服装骨架和定位参考，无需安装扩展或寻找文件。");
-        if(PrimaryButton("打开当前项目到 Blender"))TryUi(OpenBlender);
+        ImGui.TextWrapped("打开并启用配套 Blender 插件，连接后即可接收骨架。当前工程和已有对象会保留。");
+        DrawBridgeStatus();
+        if(PrimaryButton("发送当前骨架到 Blender"))TryUi(OpenBlender);
         ImGui.Spacing();
         ImGui.TextWrapped("在右侧“服装骨架”面板添加骨骼或骨链。完成后点击“返回游戏”，回到游戏即可继续。");
         ImGui.TextWrapped("完整人体挂点与服装原骨显示在同一骨架中。选挂点后添加新链，或选新链根骨再选挂点，Ctrl+P → 保持偏移。未用挂点会在返回时自动忽略。");
@@ -362,61 +349,43 @@ public sealed partial class Plugin
         ImGui.EndDisabled();
     }
 
+    private void StartBridge()
+    {
+        blenderBridge?.Dispose();blenderBridge=null;bridgeError="";
+        try
+        {
+            blenderBridge=new(storage.ReturnFile,bridgePort);
+            if(activeProjectDirectory is not null)
+                try {blenderBridge.Publish(BridgeExchange.ReadProject(activeProjectDirectory));}
+                catch(Exception e) when(e is IOException or JsonException or InvalidOperationException or ArgumentException)
+                {log.Warning("Saved project cannot be sent: {Detail}",SafeDetail(e.Message));}
+        }
+        catch(System.Net.Sockets.SocketException)
+        {bridgeError="本地连接端口不可用。请在两侧设置相同的其他端口后重试。";}
+    }
+
+    private void DrawBridgeStatus()
+    {
+        if(blenderBridge is null) {ImGui.TextWrapped(bridgeError);return;}
+        using var state=JsonDocument.Parse(JsonSerializer.Serialize(blenderBridge.Status));
+        var connected=state.RootElement.GetProperty("connected").GetBoolean();
+        ImGui.TextColored(connected?Good:Accent,$"Blender：{(connected?"已连接":"等待连接")} · 本机端口 {blenderBridge.Port}");
+        ImGui.TextWrapped(state.RootElement.GetProperty("message").GetString()??"");
+    }
+
     private void OpenBlender()
     {
         if(activeProjectDirectory is null)throw new InvalidOperationException("请先创建骨架项目。");
-        var characterInfo=Path.Combine(activeProjectDirectory,"anchor-rig.json");
-        if(!File.Exists(characterInfo))throw new InvalidOperationException("旧项目没有场景角色来源，请先读取自己或当前目标并重新创建项目。");
-        using(var info=JsonDocument.Parse(File.ReadAllText(characterInfo)))
-            if(!info.RootElement.TryGetProperty("characterSource",out var selected) || selected.ValueKind!=JsonValueKind.Object)
-                throw new InvalidOperationException("旧项目没有场景角色来源，请先读取自己或当前目标并重新创建项目。");
-        if(!EnsureBlenderConfigured(()=>TryUi(OpenBlender)))return;
-        if(openedBlender is not null && !openedBlender.HasExited && openedBlenderProject==activeProjectDirectory)
-        {status="当前项目已在 Blender 中打开，请切换到 Blender 继续编辑。";return;}
-        var resources=storage.Session;
-        var temporary=Path.Combine(resources,"tmp");
-        Directory.CreateDirectory(temporary);
-        var script=Path.Combine(storage.Bridge,"blender_open_project.py");
-        if(!File.Exists(script))throw new FileNotFoundException("插件缺少 Blender 桥接工具，请重新解压完整插件包。");
-        var start=new ProcessStartInfo(blenderExecutable){UseShellExecute=false,WorkingDirectory=storage.Root,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Normal,RedirectStandardOutput=true,RedirectStandardError=true};
-        start.Environment["BLENDER_USER_RESOURCES"]=resources;
-        start.Environment["TEMP"]=temporary;
-        start.Environment["TMP"]=temporary;
-        start.ArgumentList.Add("--factory-startup");
-        start.ArgumentList.Add("--python");
-        start.ArgumentList.Add(script);
-        start.ArgumentList.Add("--");
-        start.ArgumentList.Add(Path.Combine(activeProjectDirectory,"skeleton.gltf"));
-        File.WriteAllText(Path.Combine(Path.GetDirectoryName(storage.ReturnFile)!,"blender-launch.json"),JsonSerializer.Serialize(new{state="opening",projectId=document!.ProjectId}));
-        ReleaseBlenderHandle();
-        openedBlender=Process.Start(start)??throw new InvalidOperationException("Blender 未能启动。");
-        openedBlender.OutputDataReceived+=OnBlenderOutput;
-        openedBlender.ErrorDataReceived+=OnBlenderOutput;
-        openedBlender.BeginOutputReadLine();
-        openedBlender.BeginErrorReadLine();
-        blenderLaunchPending=true;
-        openedBlenderProject=activeProjectDirectory;
+        if(blenderBridge is null)StartBridge();
+        if(blenderBridge is null)throw new InvalidOperationException(bridgeError);
+        blenderBridge.Publish(BridgeExchange.ReadProject(activeProjectDirectory));
         workflowStep=1;
-        status="Blender 正在打开当前项目。编辑完成后点击右侧“服装骨架”面板中的“返回游戏”。";
+        status="骨架已发送到本地连接。请在已打开的 Blender 中启用配套插件；接收后可直接在当前工程编辑。";
         SaveWorkflow();
-        WriteStatus("blender-opened",status);
+        WriteStatus("blender-sent",status);
     }
 
     private static void OpenFolder(string path)=>Process.Start(new ProcessStartInfo(path){UseShellExecute=true});
-
-    private void OnBlenderOutput(object sender,DataReceivedEventArgs e)
-    {
-        if(!disposed && e.Data is{} line)log.Debug("Blender: {Detail}",SafeDetail(line));
-    }
-
-    private void ReleaseBlenderHandle()
-    {
-        if(openedBlender is null)return;
-        openedBlender.OutputDataReceived-=OnBlenderOutput;
-        openedBlender.ErrorDataReceived-=OnBlenderOutput;
-        openedBlender.Dispose();
-        openedBlender=null;
-    }
 
     private void ScheduleWorkflowAction(Action action)
     {
@@ -484,7 +453,7 @@ public sealed partial class Plugin
     private void WriteWorkflowStatus()
     {
         var path=Path.Combine(storage.Root,"Development","workflow-status.json");
-        File.WriteAllText(path,JsonSerializer.Serialize(new{step=workflowStep,project=storage.Relative(activeProjectDirectory),candidate=storage.Relative(lastCandidate),returnFile="BlenderReturn/edited.gltf",returnReady,hasNewReturn=HasNewReturn,canUseCandidate=CanUseCandidate,blenderConfigured=BlenderConfigured,sourceMode,previewActive=preview.Active,runtimeVerified,guideCompleted},new JsonSerializerOptions{WriteIndented=true}));
+        File.WriteAllText(path,JsonSerializer.Serialize(new{step=workflowStep,project=storage.Relative(activeProjectDirectory),candidate=storage.Relative(lastCandidate),returnFile="BlenderReturn/edited.gltf",returnReady,hasNewReturn=HasNewReturn,canUseCandidate=CanUseCandidate,bridge=blenderBridge?.Status,sourceMode,previewActive=preview.Active,runtimeVerified,guideCompleted},new JsonSerializerOptions{WriteIndented=true}));
         WriteStatus("workflow-ready","Development/workflow-status.json");
     }
 }

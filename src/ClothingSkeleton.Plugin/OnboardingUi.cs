@@ -9,142 +9,38 @@ namespace ClothingSkeleton.Plugin;
 
 public sealed partial class Plugin
 {
-    private const string BlenderPopup="设置 Blender###ClothingSkeletonSetup";
     private bool guideCompleted;
     private bool showGuide;
     private bool developmentMode;
-    private bool blenderPromptRequested;
-    private bool blenderPromptVisible;
-    private string blenderPathInput="";
     private string guideError="";
-    private Action? afterBlenderSetup;
-    private bool BlenderConfigured=>PluginStorage.IsBlenderExecutable(blenderExecutable);
 
-    private void OpenWorkshop()
-    {
-        open=true;
-        if(!guideCompleted)showGuide=true;
-        if(!BlenderConfigured)RequestBlenderSetup();
-    }
-
-    private void ShowOnboarding()
-    {
-        showGuide=true;
-        blenderPathInput=blenderExecutable;
-        guideError="";
-    }
-
-    private void RequestBlenderSetup(Action? resume=null)
-    {
-        ShowOnboarding();
-        blenderPromptRequested=true;
-        if(resume is not null)afterBlenderSetup=resume;
-        status="请先设置本机的 Blender 程序位置。返回文件位置已由插件固定管理。";
-    }
-
-    private bool EnsureBlenderConfigured(Action resume)
-    {
-        if(BlenderConfigured)return true;
-        RequestBlenderSetup(resume);
-        return false;
-    }
+    private void OpenWorkshop() {open=true;if(!guideCompleted)showGuide=true;}
+    private void ShowOnboarding() {showGuide=true;guideError="";}
 
     private void DrawOnboarding()
     {
-        ImGui.TextColored(Accent,"欢迎使用服装骨架工作台");
-        ImGui.TextWrapped("首次使用只需设置本机的 Blender。返回位置由插件管理，无需填写其他目录。");
-        ImGui.Spacing();
+        ImGui.TextColored(Accent,"服装骨架工作台 · Blender 互通");
+        ImGui.TextWrapped("保持 Blender 打开，骨架会发送到当前工程。无需填写 Blender 程序或返回文件地址。");
         ImGui.Separator();
-        ImGui.TextUnformatted("1  设置 Blender");
-        ImGui.TextWrapped("选择 Blender 安装目录中的 blender.exe，也可以粘贴程序路径或安装文件夹。");
-        DrawBlenderPathInput("guide");
-        ImGui.Spacing();
-        ImGui.TextUnformatted("2  编辑与返回");
-        ImGui.TextWrapped("先读取自己或当前目标 → 选择服装骨架并创建项目 → 在 Blender 编辑 → 点击“返回游戏” → 切回游戏检查。");
-        ImGui.TextWrapped("人物骨架按所选场景角色导出对应原版文件，不使用预设人物骨架，也不读取人物 Mod 骨架。");
-        ImGui.TextWrapped("人体挂点与服装原骨显示在同一骨架。给新骨链手动指定父级，未使用的挂点会在返回时自动忽略。");
-        ImGui.TextWrapped("返回文件固定保存在：插件目录 / BlenderReturn / edited.gltf。所有项目共用此位置，插件会识别当前项目，避免导入其他项目的文件。");
-        ImGui.Spacing();
-        ImGui.TextUnformatted("3  检查与实装");
-        ImGui.TextWrapped("检查通过后可预览并随时撤销，也可生成安装包发送到 Penumbra。服装权重、动画和物理需要另行制作。");
-        ImGui.Spacing();
-        ImGui.TextWrapped("换设备后重新设置该设备的 Blender。对外分发请使用干净的插件 ZIP，不要打包已经使用过的整个插件目录。");
-        ImGui.Spacing();
-        if(PrimaryButton("保存 Blender 设置并进入工作台"))SaveBlenderSetup();
-        if(ImGui.Button("稍后设置，先查看工作台")) {showGuide=false;afterBlenderSetup=null;}
-    }
-
-    private void DrawBlenderPathInput(string id)
-    {
-        ImGui.PushID(id);
-        ImGui.SetNextItemWidth(-1);
-        ImGui.InputTextWithHint("##blender-path","选择或粘贴 blender.exe 的位置",ref blenderPathInput,4096);
-        if(ImGui.Button("选择 Blender 程序…"))BrowseBlender(false);
-        if(guideError.Length>0)ImGui.TextWrapped(guideError);
-        ImGui.PopID();
-    }
-
-    private void DrawBlenderSetupPopup()
-    {
-        if(blenderPromptRequested)
+        ImGui.TextUnformatted("1  安装并启用 Blender 插件");
+        ImGui.TextWrapped("从仓库下载同版本 ClothingSkeleton-Blender ZIP，在 Blender 偏好设置 → 插件 → 从磁盘安装，选择 ZIP 并启用 Clothing Skeleton Bridge。");
+        ImGui.TextUnformatted("2  连接游戏");
+        ImGui.TextWrapped("Blender 的 3D 视图按 N，打开“服装骨架”面板，点击“连接游戏”。两侧使用相同本机端口；默认自动连接。");
+        DrawBridgeStatus();
+        ImGui.SetNextItemWidth(150);
+        ImGui.InputInt("本机连接端口",ref bridgePort);
+        if(ImGui.Button("应用端口并重连"))
         {
-            ImGui.OpenPopup(BlenderPopup);
-            blenderPromptVisible=true;
-            blenderPromptRequested=false;
+            if(bridgePort is <1 or >65535)guideError="端口应在 1 到 65535 之间。";
+            else {StartBridge();SaveWorkflow();guideError=bridgeError;}
         }
-        ImGui.SetNextWindowSize(new Vector2(520,0),ImGuiCond.Appearing);
-        if(!ImGui.BeginPopupModal(BlenderPopup,ref blenderPromptVisible,ImGuiWindowFlags.AlwaysAutoResize))return;
-        ImGui.TextWrapped("尚未设置有效的 Blender 地址。请填写本机 blender.exe 的位置后继续。");
-        ImGui.SetNextItemWidth(470);
-        ImGui.InputTextWithHint("##popup-blender-path","Blender 程序位置",ref blenderPathInput,4096);
-        if(ImGui.Button("选择 Blender 程序…"))BrowseBlender(true);
         if(guideError.Length>0)ImGui.TextWrapped(guideError);
-        if(ImGui.Button("保存并继续") && SaveBlenderSetup())ImGui.CloseCurrentPopup();
-        ImGui.SameLine();
-        if(ImGui.Button("稍后设置")) {afterBlenderSetup=null;blenderPromptVisible=false;ImGui.CloseCurrentPopup();}
-        ImGui.EndPopup();
-    }
-
-    private void BrowseBlender(bool reopenPopup)
-    {
-        if(reopenPopup) {blenderPromptVisible=false;ImGui.CloseCurrentPopup();}
-        fileDialogs.OpenFileDialog("选择 Blender 程序",".exe",(ok,path)=>
-        {
-            if(ok) {blenderPathInput=path;guideError="";}
-            if(reopenPopup)blenderPromptRequested=true;
-        });
-    }
-
-    private bool SaveBlenderSetup()
-    {
-        try
-        {
-            var path=PluginStorage.NormalizeBlenderPath(blenderPathInput);
-            if(string.IsNullOrWhiteSpace(path)) {guideError="Blender 地址不能为空，请填写或选择 blender.exe。";return false;}
-            if(!PluginStorage.IsBlenderExecutable(path))
-            {guideError="没有找到 blender.exe，请选择实际安装的 Blender 程序。";return false;}
-            var previousExecutable=blenderExecutable;
-            var previousGuide=guideCompleted;
-            blenderExecutable=Path.GetFullPath(path);
-            blenderPathInput=blenderExecutable;
-            guideCompleted=true;
-            guideError="";
-            showGuide=false;
-            if(!SaveWorkflow())
-            {
-                blenderExecutable=previousExecutable;
-                guideCompleted=previousGuide;
-                guideError="设置未能保存，请确认插件目录允许写入后重试。";
-                return false;
-            }
-            status="Blender 设置已保存。现在可以创建骨架项目。";
-            var resume=afterBlenderSetup;
-            afterBlenderSetup=null;
-            if(resume is not null)TryUi(resume);
-            return true;
-        }
-        catch(Exception e) when(e is ArgumentException or IOException or UnauthorizedAccessException)
-        {guideError="无法保存设置，请确认 Blender 程序和插件目录可访问。";return false;}
+        ImGui.TextUnformatted("3  发送骨架、编辑、返回");
+        ImGui.TextWrapped("读取自己或当前目标 → 选择服装骨架 → 创建并发送到 Blender → 手动指定新骨链父级 → Blender 点击“返回游戏” → 游戏回导检查。");
+        ImGui.TextWrapped("人物骨架来自所选角色对应的原版文件。完整人体挂点与服装原骨位于同一骨架；未用挂点在返回时自动忽略。服装权重、动画和物理需要另行制作。");
+        ImGui.TextWrapped("重复发送同一项目会保留已有编辑。新项目会新增骨架对象，不会清空 Blender 场景。请自行保存 .blend 工程。");
+        ImGui.TextWrapped("返回文件由游戏侧固定保存在插件目录 / BlenderReturn / edited.gltf。仅连接本机，不需要开放防火墙或局域网端口。");
+        if(PrimaryButton("进入工作台")) {guideCompleted=true;showGuide=false;SaveWorkflow();}
     }
 
     private string SafeDetail(string text)

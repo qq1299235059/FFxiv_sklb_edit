@@ -4,7 +4,7 @@
 
 在游戏中选择“自己”或“当前目标”，按该角色导出对应的原版人物骨架，不使用预设人物参考。Blender 中同时显示人物挂点和服装原骨；你可以手动给新骨链指定父级，未用挂点在导出时自动忽略，原场景保持完整。
 
-当前版本：**0.5.0 开发预览版**。已通过 116 项核心检查、真实 Blender 往返和游戏内 Havok 文件转换。多挂点的角色动作随动、外部动画/物理引用和服装加权仍需实际验收。
+当前版本：**0.6.0 开发预览版**。通过本机端口发送至已打开的 Blender，保留当前工程。已通过 133 项核心检查、真实 Blender 往返和游戏内 Havok 文件转换。多挂点的角色动作随动、外部动画/物理引用和服装加权仍需实际验收。
 
 ## 通过 Dalamud 仓库安装
 
@@ -19,9 +19,10 @@
 
 3. 保存设置，回到插件列表并刷新，搜索 **服装骨架工作台** 或 **Clothing Skeleton**。
 4. 点击安装。无需启用测试版本开关；当前仓库条目就是开发预览版。
-5. 输入 `/csw`，按首次指引选择本机 `blender.exe`，保存后进入工作台。
+5. 下载同版本 Blender 插件 ZIP，在 Blender 的 **偏好设置 → 插件 → 从磁盘安装** 中安装并启用 **Clothing Skeleton Bridge**。
+6. 保持 Blender 打开，输入 `/csw`，按指引连接。Blender 的 **服装骨架** 面板默认自动连接游戏本机端口。
 
-游戏插件已经包含 Blender 工具，通过工作台打开 Blender 时自动加载，通常不需要再手动安装 Blender 插件。
+0.6 直接连接已打开的 Blender，不再启动程序或新建工程。无需填写 Blender 程序路径或返回目录。两侧默认使用 **127.0.0.1:43867**，只在本机通信，不需要管理员权限或开放防火墙。
 
 已有开发版的用户请先关闭旧副本，同一时间只启用一份。仓库地址必须使用上面的原始 JSON 地址，不能填写 GitHub 首页或带 `blob` 的文件页面。
 
@@ -38,9 +39,9 @@
 
 客户端与 API 不匹配时，插件可能不出现在可安装列表中；原生转换也会检查客户端版本。国际服与其他客户端构建尚未适配。
 
-- [Dalamud 插件 ZIP](https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.5.0/ClothingSkeleton-0.5.0.zip)
-- [单独的 Blender 插件 ZIP](https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.5.0/ClothingSkeleton-Blender-0.5.0.zip)
-- [文件 SHA256](downloads/0.5.0/SHA256SUMS.txt) · [分发检查](downloads/0.5.0/verification.json)
+- [Dalamud 插件 ZIP](https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.6.0/ClothingSkeleton-0.6.0.zip)
+- [单独的 Blender 插件 ZIP](https://raw.githubusercontent.com/qq1299235059/FFxiv_sklb_edit/main/downloads/0.6.0/ClothingSkeleton-Blender-0.6.0.zip)
+- [文件 SHA256](downloads/0.6.0/SHA256SUMS.txt) · [分发检查](downloads/0.6.0/verification.json)
 
 手动安装作为备用：完整解压 Dalamud ZIP，将 `ClothingSkeleton.dll` 添加为开发插件，保留同目录下的核心程序与 `BlenderBridge` 文件夹。
 
@@ -48,7 +49,7 @@
 
 ### 1. 准备骨架
 
-输入 `/csw`，在“准备骨架”中点击 **读取自己**，或先在场景选中人物后点击 **读取当前目标**。确认显示的种族性别，再选择服装骨架，点击 **创建项目并打开 Blender**。导出时会重新核对所选角色；角色、外观或上衣改变后需要重新读取。
+输入 `/csw`，在“准备骨架”中点击 **读取自己**，或先在场景选中人物后点击 **读取当前目标**。确认显示的种族性别，再选择服装骨架，点击 **创建并发送到 Blender**。导出时会重新核对所选角色；角色、外观或上衣改变后需要重新读取。
 
 服装骨架默认从所选角色当前上衣的原版关联查找。如果当前上衣没有原版附加骨架，可选择 **指定游戏服装骨架**，或选择 **本地服装骨架文件** 并填写对应游戏路径。服装骨架必须与所选人物的种族性别匹配；不会为了适配服装而换回预设人物骨架。
 
@@ -76,21 +77,23 @@
 
 ## 单独安装 Blender 工具
 
-推荐使用游戏工作台的“打开 Blender”，工具会自动加载。若需要在已有 Blender 窗口中工作，可下载上面的 Blender ZIP，在 **偏好设置 → 插件** 中从磁盘安装并启用 **Clothing Skeleton Bridge**。
+下载上面的同版本 Blender ZIP，在 **偏好设置 → 插件** 中从磁盘安装并启用 **Clothing Skeleton Bridge**。在 3D 视图按 **N**，打开 **服装骨架** 面板，等待“已连接游戏”；也可点击 **连接游戏**。安装更新后停用并重新启用插件，使新代码生效。
 
-在“服装骨架”面板选择 **手动打开项目**，打开游戏插件生成的 `Projects/项目/skeleton.gltf`，保留项目与游戏插件目录的相对关系。单独的 Blender 工具负责编辑和返回，原生 SKLB 转换仍由游戏插件完成。
+游戏中点击 **创建并发送到 Blender** 或 **发送当前骨架到 Blender**，骨架直接加入当前场景。重复发送同一份项目会保留已有编辑；新项目新增骨架对象。编辑模式中收到的新项目会等回到对象模式后导入，不会打断当前编辑。请自行保存 `.blend`。
+
+点击 **返回游戏** 后，等待 Blender 面板显示 **已返回游戏** 再切回游戏回导检查。网络传输使用游戏生成的 glTF 资料，原生 SKLB 转换仍由游戏插件完成。Blender 端仅保存自身缓存，不依赖游戏侧目录或开发工程路径。
 
 ## 返回位置、更新与常见问题
 
-返回文件固定为 **当前游戏插件目录下的 `BlenderReturn/edited.gltf`**，无需手动设置。所有项目共用该位置，插件会检查项目身份和完成哈希。本机设置、Projects、BlenderSession 均由当前安装生成，不在下载包中。
+返回文件固定为 **当前游戏插件目录下的 `BlenderReturn/edited.gltf`**，无需手动设置。所有项目共用该位置，插件会检查项目身份和完成哈希。本机设置和 Projects 由当前安装生成，Blender 缓存由 Blender 在本机生成；这些都不在下载包中。
 
 - **列表中找不到插件**：确认仓库已启用，使用原始 JSON 地址，网络能访问 GitHub 与 raw.githubusercontent.com；再核对客户端及 Dalamud API 版本。
-- **提示 Blender 地址无效**：在工作台的“使用指引与 Blender 设置”重新选择本机程序。换设备后需要重新设置。
-- **看不到新挂点流程**：用 0.5 新建项目并打开新的 Blender 窗口，旧窗口不会自动更新工具。
+- **连接不上**：确认游戏插件已启用、Blender 插件为同版本，端口相同。默认 43867 被占用时，在游戏指引和 Blender 面板改成同一个空闲端口，再分别应用和连接。只支持同一台电脑，且同一时间只连接一个 Blender。
+- **重复发送没有刷新骨架**：这是为了保留现有编辑。同一项目和相同内容不会覆盖场景骨架；要从原始状态重做，请在游戏重新创建项目。
 - **当前目标不可用**：先在场景中选中人物，等待人形模型加载，再点击“读取当前目标”。目标为空、非人形或模型不支持时会拒绝，不会自动改为自己。
-- **旧项目无法打开**：0.5 要求明确的场景角色来源，请读取自己或当前目标后重新创建；旧 Blender 窗口不会自动升级。
+- **旧项目无法打开**：新版要求明确的场景角色来源，请读取自己或当前目标后重新创建；Blender 插件需停用再启用以完成更新。
 - **回导被拒绝**：恢复误改的原骨或挂点，为新链第一根指定父级，并使用面板“返回游戏”重新导出。
-- **升级或移动安装目录**：先备份需要的 Projects。不同版本可能使用不同安装目录；在新安装中重新设置 Blender 并新建项目。不要把用过的整个插件目录重新打包分发。
+- **升级或移动安装目录**：先备份需要的 Projects。不同版本可能使用不同安装目录；在新安装中安装同版本 Blender 插件并连接，再新建项目。不要把用过的整个插件目录重新打包分发。
 
 完整步骤见 [使用指南](docs/分发使用指南.md)。问题反馈请使用本仓库 [Issues](https://github.com/qq1299235059/FFxiv_sklb_edit/issues)，附客户端、Dalamud、Blender 版本和可复现步骤；分享截图或日志前移除个人目录信息。
 
@@ -101,9 +104,9 @@
 | `src/ClothingSkeleton.Core` | SKLB、glTF、身份校验、多挂点计划和 Havok XML |
 | `src/ClothingSkeleton.Plugin` | Dalamud 界面、原生转换和 Penumbra 集成 |
 | `blender/clothing_skeleton_bridge` | Blender 工具源码 |
-| `tests/ClothingSkeleton.Tests` | 116 项核心检查 |
+| `tests/ClothingSkeleton.Tests` | 133 项核心检查 |
 | `tools` | 本地构建、打包、发布准备与验证工具 |
-| `downloads/0.5.0` | 清理过的可安装文件、指南和哈希 |
+| `downloads/0.6.0` | 清理过的可安装文件、指南和哈希 |
 
 构建需要匹配的国服 Dalamud 开发程序集。`python tools/bootstrap_sdk.py` 准备项目本地 .NET SDK，再运行 `./tools/build.ps1 -Test`、`./tools/build.ps1 -Release` 和 `python tools/package_release.py`。原生测试需要对应客户端；开发文件指令默认关闭。
 

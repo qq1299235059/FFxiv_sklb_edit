@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Clothing Skeleton Bridge",
     "author": "ClothingSkeleton contributors",
-    "version": (0, 5, 0),
+    "version": (0, 6, 0),
     "blender": (4, 5, 0),
     "location": "3D View > Sidebar > 服装骨架",
     "description": "Import protected FFXIV clothing skeletons and export appended bones",
@@ -11,15 +11,20 @@ bl_info = {
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import uuid
 
 import bpy
-from bpy.props import StringProperty
+from bpy.props import StringProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix, Quaternion
-from . import anchors
+from . import anchors, connection
+
+def safe_error(error):
+    return re.sub(r"(?i)(?:[a-z]:[\\/]|/(?:Users|home)/)[^\r\n\"<>]+", "<本地路径>", str(error))
+
 
 PLUGIN_ROOT = None
 def configure_plugin_root(directory):
@@ -31,6 +36,8 @@ def configure_plugin_root(directory):
 
 
 def _return_file_for_source(filepath):
+    if Path(filepath).with_name(".csw-network.json").is_file():
+        return Path(filepath).parent / "return" / "edited.gltf"
     if PLUGIN_ROOT is not None:
         return PLUGIN_ROOT / "BlenderReturn" / "edited.gltf"
     descriptor = Path(filepath).parent / "bridge.json"
@@ -43,6 +50,18 @@ def _return_file_for_source(filepath):
 
 
 def import_project(filepath):
+    before = set(bpy.data.objects)
+    try:
+        return _import_project(filepath)
+    except Exception:
+        if bpy.context.object and bpy.context.object.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        for obj in set(bpy.data.objects) - before:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        raise
+
+
+def _import_project(filepath):
     filepath = Path(filepath).resolve()
     fixed_return = _return_file_for_source(filepath)
     baseline = json.loads(filepath.with_suffix(".ffxiv.json").read_text(encoding="utf-8-sig"))
@@ -257,6 +276,13 @@ def _export_project(armature, filepath):
             for child in value:
                 clean_extras(child)
     clean_extras(gltf)
+    if armature.get("csw_network_revision"):
+        import base64
+        for buffer in gltf.get("buffers", []):
+            uri = buffer.get("uri", "")
+            if uri != filepath.with_suffix(".bin").name:
+                raise ValueError("导出包含意外外部引用")
+            buffer["uri"] = "data:application/octet-stream;base64," + base64.b64encode(filepath.with_suffix(".bin").read_bytes()).decode("ascii")
     if len(gltf.get("skins", [])) != 1:
         raise ValueError("导出结果应只包含一个服装骨架，请重新打开项目")
     nodes = gltf["nodes"]
@@ -294,6 +320,11 @@ def current_armature(context):
 
 
 def return_path(armature):
+    if armature and armature.get("csw_network_revision"):
+        baseline = json.loads(armature["csw_baseline"])
+        cache = connection.bridge.cache or Path(bpy.utils.user_resource("DATAFILES", path="clothing_skeleton_bridge", create=True))
+        key = hashlib.sha256((baseline["projectId"] + armature["csw_network_revision"]).encode()).hexdigest()[:24]
+        return cache / key / "return" / "edited.gltf"
     if not armature or "csw_source_file" not in armature:
         raise ValueError("请先导入服装骨架项目")
     return _return_file_for_source(armature["csw_source_file"])
@@ -318,7 +349,7 @@ class CSW_OT_import(bpy.types.Operator, ImportHelper):
             import_project(self.filepath)
             return {"FINISHED"}
         except Exception as error:
-            self.report({"ERROR"}, str(error))
+            self.report({"ERROR"}, safe_error(error))
             return {"CANCELLED"}
 
 
@@ -332,11 +363,15 @@ class CSW_OT_return(bpy.types.Operator):
             armature = current_armature(context)
             if not armature:
                 raise ValueError("请先导入服装骨架项目")
-            export_project(armature)
-            self.report({"INFO"}, "已返回游戏，切回游戏点击“回导并检查”")
+            target = export_project(armature)
+            if armature.get("csw_network_revision"):
+                connection.bridge.enqueue_return(armature, target)
+                self.report({"INFO"}, "正在发送，面板显示成功后切回游戏检查")
+            else:
+                self.report({"INFO"}, "已写入固定返回位置，请切回游戏检查")
             return {"FINISHED"}
         except Exception as error:
-            self.report({"ERROR"}, str(error))
+            self.report({"ERROR"}, safe_error(error))
             return {"CANCELLED"}
 
 
@@ -354,7 +389,7 @@ class CSW_OT_add_bone(bpy.types.Operator):
             name = add_test_bone(armature, "csw_bone", selected)
             focus_new_bones(armature, [name])
         except Exception as error:
-            self.report({"ERROR"}, str(error))
+            self.report({"ERROR"}, safe_error(error))
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -367,9 +402,17 @@ class CSW_PT_panel(bpy.types.Panel):
     bl_category = "服装骨架"
 
     def draw(self, context):
+        self.layout.label(text=connection.bridge.message)
+        prefs = context.preferences.addons.get(__package__)
+        if prefs:
+            self.layout.prop(prefs.preferences, "port", text="本机端口")
+        row = self.layout.row(align=True)
+        row.operator("csw.connect", text="连接游戏")
+        row.operator("csw.disconnect", text="断开")
+        self.layout.separator()
         armature = current_armature(context)
         if not armature:
-            self.layout.label(text="先在游戏中创建项目并打开 Blender")
+            self.layout.label(text="先在游戏创建并发送骨架")
             self.layout.operator("csw.import_project", text="手动打开项目…")
             return
         baseline = json.loads(armature["csw_baseline"])
@@ -391,7 +434,7 @@ class CSW_PT_panel(bpy.types.Panel):
         row = self.layout.row()
         row.scale_y = 1.6
         row.operator("csw.return_to_game", icon="EXPORT")
-        self.layout.label(text="返回位置已关联，导出后切回游戏即可")
+        self.layout.label(text="通过本机连接返回，成功后切回游戏检查")
         self.layout.label(text="人体挂点可直接选作新链父级")
         advanced = self.layout.box()
         advanced.label(text="其他文件操作")
@@ -412,20 +455,71 @@ class CSW_OT_add_chain(bpy.types.Operator):
             names = add_test_chain(armature, selected)
             focus_new_bones(armature, names)
         except Exception as error:
-            self.report({"ERROR"}, str(error))
+            self.report({"ERROR"}, safe_error(error))
             return {"CANCELLED"}
         return {"FINISHED"}
 
 
-CLASSES = (CSW_OT_import, CSW_OT_return, CSW_OT_add_bone, CSW_OT_add_chain, CSW_PT_panel)
+class CSW_Preferences(bpy.types.AddonPreferences):
+    bl_idname = __package__
+    port: IntProperty(name="本机端口", default=connection.DEFAULT_PORT, min=1, max=65535)
+
+    def draw(self, context):
+        self.layout.prop(self, "port")
+        self.layout.label(text="与游戏插件保持一致，仅连接 127.0.0.1")
+
+
+def start_connection():
+    prefs = bpy.context.preferences.addons.get(__package__)
+    port = prefs.preferences.port if prefs else connection.DEFAULT_PORT
+    cache = bpy.utils.user_resource("DATAFILES", path="clothing_skeleton_bridge", create=True)
+    connection.bridge.start(port, cache)
+
+
+class CSW_OT_connect(bpy.types.Operator):
+    bl_idname = "csw.connect"
+    bl_label = "连接游戏"
+
+    def execute(self, context):
+        try:
+            start_connection()
+            return {"FINISHED"}
+        except Exception:
+            self.report({"ERROR"}, "连接尚未关闭，请稍后重试并确认端口设置")
+            return {"CANCELLED"}
+
+
+class CSW_OT_disconnect(bpy.types.Operator):
+    bl_idname = "csw.disconnect"
+    bl_label = "断开游戏连接"
+
+    def execute(self, context):
+        connection.bridge.stop()
+        return {"FINISHED"}
+
+
+def connection_tick():
+    interval = connection.bridge.tick(bpy, import_project)
+    for screen in bpy.data.screens:
+        for area in screen.areas:
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+    return interval
+
+
+CLASSES = (CSW_Preferences, CSW_OT_connect, CSW_OT_disconnect, CSW_OT_import, CSW_OT_return, CSW_OT_add_bone, CSW_OT_add_chain, CSW_PT_panel)
 
 
 def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
+    start_connection()
+    bpy.app.timers.register(connection_tick, first_interval=0.3, persistent=True)
 
 
 def unregister():
+    if bpy.app.timers.is_registered(connection_tick):
+        bpy.app.timers.unregister(connection_tick)
+    connection.bridge.stop()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
-

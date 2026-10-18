@@ -14,7 +14,7 @@ HOST_PATH = re.compile(r"(?i)(?:(?<![a-z0-9])[a-z]:[\\/]|\\\\[a-z0-9]|/(?:Users|
 EXPECTED = {
     "ClothingSkeleton.dll", "ClothingSkeleton.Core.dll", "ClothingSkeleton.json",
     "ClothingSkeleton.deps.json", "使用指南.md", "SHA256SUMS.txt",
-    "BlenderBridge/blender_open_project.py",
+    "BlenderBridge/clothing_skeleton_bridge/connection.py",
     "BlenderBridge/clothing_skeleton_bridge/__init__.py",
     "BlenderBridge/clothing_skeleton_bridge/anchors.py",
 }
@@ -69,7 +69,7 @@ def main():
         if json.loads(zipped.read("ClothingSkeleton.json").decode("utf-8-sig")) != metadata:
             raise RuntimeError("ZIP metadata does not match source metadata")
         for source, name in [
-            (ROOT / "tools/blender_open_project.py", "BlenderBridge/blender_open_project.py"),
+            (bridge / "connection.py", "BlenderBridge/clothing_skeleton_bridge/connection.py"),
             (bridge / "__init__.py", "BlenderBridge/clothing_skeleton_bridge/__init__.py"),
             (bridge / "anchors.py", "BlenderBridge/clothing_skeleton_bridge/anchors.py"),
             (ROOT / "docs/分发使用指南.md", "使用指南.md"),
@@ -97,7 +97,7 @@ def main():
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zipped:
         for path, name in [(bridge / "__init__.py", "__init__.py"), (bridge / "anchors.py", "anchors.py"),
-                           (ROOT / "blender/README.md", "README.md")]:
+                           (bridge / "connection.py", "connection.py"), (ROOT / "blender/README.md", "README.md")]:
             data = path.read_bytes()
             clean(data, name)
             entry = zipfile.ZipInfo(f"clothing_skeleton_bridge/{name}", date_time=(2020, 1, 1, 0, 0, 0))

@@ -97,6 +97,7 @@ public sealed partial class Plugin : IDalamudPlugin
             using var command=JsonDocument.Parse(File.ReadAllText(claimed));
             var action=command.RootElement.GetProperty("action").GetString();
             if(action=="append") ScheduleAppend();
+            else if(action=="send-blender") OpenBlender();
             else if(action=="select-character") {ApplyCharacterSelection(command.RootElement.GetProperty("selection").GetString()!);}
             else if(action=="inspect") { sourceMode=1;source=command.RootElement.GetProperty("path").GetString()!; ScheduleRoundTrip(); }
             else if(action=="package") ExportPackage();
@@ -177,7 +178,6 @@ public sealed partial class Plugin : IDalamudPlugin
         }
         if (ImGui.Begin("服装骨架工作台###ClothingSkeleton", ref open)) DrawWorkflow();
         ImGui.End();
-        DrawBlenderSetupPopup();
         fileDialogs.Draw();
     }
 
@@ -375,7 +375,6 @@ public sealed partial class Plugin : IDalamudPlugin
     private void ScheduleRoundTrip(bool launchBlender=false)
     {
         if (busy || disposed) return;
-        if(launchBlender && !EnsureBlenderConfigured(()=>ScheduleRoundTrip(true)))return;
         busy = true;
         operationFailed=false;
         var selected = source.Trim();
@@ -498,9 +497,9 @@ public sealed partial class Plugin : IDalamudPlugin
         var returned=returnedPath.Trim();
         _=framework.RunOnFrameworkThread(() =>
         {
-            try { if (!disposed) {if(preview.Active)StopWorkflowPreview();Append(project,returned);} }
+            try { blenderBridge?.PauseReturns(true);if (!disposed) {if(preview.Active)StopWorkflowPreview();Append(project,returned);} }
             catch(Exception e) { operationFailed=true;status=e.Message; log.Error("Skeleton append failed: {Detail}",SafeDetail(e.ToString())); WriteStatus("failed",e.ToString()); }
-            finally { busy=false; }
+            finally { blenderBridge?.PauseReturns(false);busy=false; }
         });
     }
 
@@ -603,7 +602,7 @@ public sealed partial class Plugin : IDalamudPlugin
     private void WriteStatus(string state, string detail)
     {
         var path=Path.Combine(outputRoot,"status.json");
-        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new { state, detail=SafeDetail(detail), timestamp = DateTimeOffset.UtcNow, pluginVersion = "0.5.0", gameVersion = "2026.10.06.0000.0000" }, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(path+".tmp",JsonSerializer.Serialize(new { state, detail=SafeDetail(detail), timestamp = DateTimeOffset.UtcNow, pluginVersion = "0.6.0", gameVersion = "2026.10.06.0000.0000" }, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(path+".tmp",path,true);
     }
 
@@ -612,7 +611,7 @@ public sealed partial class Plugin : IDalamudPlugin
         disposed = true;
         SaveWorkflow();
         fileDialogs.Reset();
-        ReleaseBlenderHandle();
+        blenderBridge?.Dispose();
         try { preview.Dispose(); } catch(Exception e) { log.Error("Could not remove temporary skeleton preview during disposal: {Detail}",SafeDetail(e.ToString())); }
         pluginInterface.UiBuilder.Draw -= Draw;
         pluginInterface.UiBuilder.OpenMainUi -= Open;

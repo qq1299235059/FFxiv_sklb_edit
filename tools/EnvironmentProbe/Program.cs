@@ -15,6 +15,24 @@ if (args[0] == "items")
         if ((model & 0xffff) == ulong.Parse(args[2])) Console.WriteLine($"{item.RowId} | {item.Name} | model={model:X16} | slot={item.EquipSlotCategory.RowId}");
     }
 }
+else if (args[0] == "bridge-host")
+{
+    // Isolated transport harness; no game memory or actor operations.
+    using var bridge=new BlenderBridgeServer(args[2],0);
+    bridge.Publish(BridgeExchange.ReadProject(args[1]));
+    File.WriteAllText(args[3],System.Text.Json.JsonSerializer.Serialize(new{port=bridge.Port}));
+    var control=args[4];
+    while(!File.Exists(control+".stop"))
+    {
+        if(File.Exists(control))
+        {
+            var path=File.ReadAllText(control);File.Delete(control);
+            bridge.Publish(BridgeExchange.ReadProject(path));
+        }
+        File.WriteAllText(args[3]+".status",System.Text.Json.JsonSerializer.Serialize(bridge.Status));
+        Thread.Sleep(100);
+    }
+}
 else if (args[0] == "gltf")
 {
     GltfExchange.Export(SkeletonDocument.Load(args[1]), args[2]);
